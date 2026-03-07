@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def _to_bool(raw: str | None, default: bool) -> bool:
     if raw is None:
