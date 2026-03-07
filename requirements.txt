@@ -1,0 +1,31 @@
+# Install with: pip install -r requirements.txt
+
+# ── Core LangChain + LangGraph ─────────────────────────────────
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-chroma>=0.1.4
+langchain-huggingface>=0.1.0
+langgraph>=0.2.0
+
+# ── LLM providers (uncomment the one you use) ─────────────────
+langchain-groq>=0.1.9          # Groq (default)
+# langchain-openai>=0.2.0      # OpenAI
+# ollama>=0.3.0                # Ollama (local)
+
+# ── Embeddings ─────────────────────────────────────────────────
+sentence-transformers>=2.7.0
+torch>=2.0.0
+
+# ── Vector store ───────────────────────────────────────────────
+chromadb>=0.5.0
+
+# ── Data / utilities ───────────────────────────────────────────
+pandas>=2.0.0
+python-dotenv>=1.0.0
+
+# ── Observability ──────────────────────────────────────────────
+langfuse>=3.0.0
+
+# ── Optional Streamlit UI ──────────────────────────────────────
+# streamlit>=1.35.0
