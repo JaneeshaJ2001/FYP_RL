@@ -12,11 +12,8 @@ from langchain_core.messages import HumanMessage
 from config import CONFIG
 from graph import build_graph
 from ingestion import load_or_create_vectorstore
-from nodes import (
-    DisasterState,
-    build_run_config,
-    flush_langfuse,
-)
+from nodes import DisasterState
+from observability import build_run_config, flush_langfuse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,7 +108,7 @@ import streamlit as st
 from langchain_core.messages import HumanMessage
 
 from graph import build_graph
-from nodes import build_run_config
+from observability import build_run_config
 
 @st.cache_resource
 def get_app():

@@ -8,6 +8,7 @@ Disaster-domain RAG chatbot focused on floods and landslides, built with LangGra
 - `nodes.py`: state definition, node logic, tracing/runtime helpers
 - `ingestion.py`: data loading and vectorstore creation/loading
 - `graph.py`: LangGraph construction and compilation
+- `observability.py`: Langfuse tracing and run-config helpers
 - `config.py`: centralized typed runtime config (`AppConfig`) + env overrides
 - `prompts.py`: prompt templates used by generation/summarization nodes
 - `chunks.json`: source chunk data for ingestion
