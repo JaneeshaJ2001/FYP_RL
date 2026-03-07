@@ -11,11 +11,11 @@ from langchain_core.messages import HumanMessage
 
 from config import CONFIG
 from graph import build_graph
+from ingestion import load_or_create_vectorstore
 from nodes import (
     DisasterState,
     build_run_config,
     flush_langfuse,
-    load_or_create_vectorstore,
 )
 
 logging.basicConfig(

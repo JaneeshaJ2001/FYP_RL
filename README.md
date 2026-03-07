@@ -4,9 +4,9 @@ Disaster-domain RAG chatbot focused on floods and landslides, built with LangGra
 
 ## Project Structure
 
-- `main.py`: application flow, nodes, graph wiring, chat loop
 - `main.py`: CLI entry point and chat loop
-- `nodes.py`: state definition, ingestion, node logic, tracing helpers
+- `nodes.py`: state definition, node logic, tracing/runtime helpers
+- `ingestion.py`: data loading and vectorstore creation/loading
 - `graph.py`: LangGraph construction and compilation
 - `config.py`: centralized typed runtime config (`AppConfig`) + env overrides
 - `prompts.py`: prompt templates used by generation/summarization nodes
