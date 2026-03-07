@@ -21,7 +21,6 @@ from dotenv import load_dotenv
 # LangChain core
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 
 # Embeddings
@@ -30,7 +29,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # Vector store
 from langchain_chroma import Chroma
 
-# LLM providers (swap via CFG below)
+# LLM providers
 from langchain_groq import ChatGroq
 # from langchain_openai import ChatOpenAI
 
@@ -44,6 +43,9 @@ from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 from typing_extensions import TypedDict
 
+from config import CONFIG
+from prompts import ANSWER_PROMPT, SUMMARY_PROMPT
+
 load_dotenv()
 
 logging.basicConfig(
@@ -53,42 +55,11 @@ logging.basicConfig(
 logger = logging.getLogger("disaster_chatbot")
 
 
-# ──────────────────────────────────────────────────────────────
-# 2. CONFIGURATION
-# ──────────────────────────────────────────────────────────────
-CFG = {
-    # ── Vector store ──
-    "chroma_dir":        "./chroma_db_disaster",
-    "chroma_collection": "disaster_rag",
-    "top_k":             3,
-
-    # ── CSV ingestion ──
-    "chunks_path":       "chunks.json",
-
-    # ── Embeddings ──
-    "embed_model":       "sentence-transformers/all-MiniLM-L6-v2",
-
-    # ── LLM ──
-    # Switch provider by changing "provider" + "model"
-    "llm_provider":      "groq",          # "groq" | "openai"
-    "llm_model":         "llama-3.3-70b-versatile",
-    "llm_temperature":   0.1,
-
-    # ── Memory ──
-    "summary_max_tokens": 300,
-
-    # ── Observability ──
-    # Tracing auto-enables when Langfuse keys are present in environment
-    "langfuse_enabled": True,
-    "langfuse_tags":    ["disaster-rag", "langgraph"],
-}
-
-
 def build_llm():
-    """Factory – swap LLM provider via CFG without touching node code."""
-    provider = CFG["llm_provider"]
-    model    = CFG["llm_model"]
-    temp     = CFG["llm_temperature"]
+    """Factory – swap LLM provider via CONFIG without touching node code."""
+    provider = CONFIG.llm_provider
+    model = CONFIG.llm_model
+    temp = CONFIG.llm_temperature
 
     if provider == "groq":
         return ChatGroq(
@@ -97,7 +68,15 @@ def build_llm():
             groq_api_key=os.getenv("GROQ_API_KEY"),
         )
     elif provider == "openai":
-        return ChatOpenAI(          # noqa: F821  (import at top when needed)
+        try:
+            openai_module = importlib.import_module("langchain_openai")
+            chat_openai_cls = getattr(openai_module, "ChatOpenAI")
+        except Exception as exc:
+            raise ImportError(
+                "OpenAI provider selected but 'langchain_openai' is not installed."
+            ) from exc
+
+        return chat_openai_cls(
             model=model,
             temperature=temp,
             openai_api_key=os.getenv("OPENAI_API_KEY"),
@@ -107,7 +86,7 @@ def build_llm():
 
 
 def build_embeddings():
-    return HuggingFaceEmbeddings(model_name=CFG["embed_model"])
+    return HuggingFaceEmbeddings(model_name=CONFIG.embed_model)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -130,8 +109,6 @@ def _load_chunks_file(file_path: str) -> "pd.DataFrame":
 
     Returns a DataFrame with at minimum columns: 'chunk', 'metadata'.
     """
-    import re as _re
-
     with open(file_path, "r", encoding="utf-8") as fh:
         raw = fh.read().strip()
 
@@ -167,8 +144,8 @@ def load_or_create_vectorstore(
     force_recreate : if True, wipe the existing DB and rebuild from JSON
     """
     embeddings = build_embeddings()
-    chroma_dir = CFG["chroma_dir"]
-    collection = CFG["chroma_collection"]
+    chroma_dir = CONFIG.chroma_dir
+    collection = CONFIG.chroma_collection
 
     db_exists = os.path.isdir(chroma_dir) and any(
         f.endswith(".sqlite3") for f in os.listdir(chroma_dir)
@@ -187,7 +164,7 @@ def load_or_create_vectorstore(
 
     # ── Build from JSON ──────────────────────────────────────────
     if json_path is None:
-        json_path = CFG["chunks_path"]
+        json_path = CONFIG.chunks_path
 
     logger.info("Creating new Chroma DB from %s", json_path)
     df = _load_chunks_file(json_path)
@@ -283,7 +260,7 @@ def _get_langfuse_handler():
 
     _langfuse_initialized = True
 
-    tracing_enabled = CFG.get("langfuse_enabled", True) and _env_flag(
+    tracing_enabled = CONFIG.langfuse_enabled and _env_flag(
         "LANGFUSE_TRACING_ENABLED", default=True
     )
     if not tracing_enabled:
@@ -342,7 +319,7 @@ def _build_run_config(thread_id: str) -> dict[str, Any]:
         run_config["callbacks"] = [handler]
         run_config["metadata"] = {
             "langfuse_session_id": thread_id,
-            "langfuse_tags": CFG.get("langfuse_tags", ["langgraph"]),
+            "langfuse_tags": list(CONFIG.langfuse_tags),
         }
 
     return run_config
@@ -377,7 +354,7 @@ def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict
 
     retriever = _get_vectorstore().as_retriever(
         search_type="similarity",               # swap to "mmr" for diversity
-        search_kwargs={"k": CFG["top_k"]},
+        search_kwargs={"k": CONFIG.top_k},
     )
     invoke_config = _extract_invoke_config(config)
     docs = (
@@ -390,37 +367,6 @@ def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict
 
 
 # ── Node 2: generate_answer ────────────────────────────────────
-
-_ANSWER_PROMPT = ChatPromptTemplate.from_template(
-    """You are a helpful, calm, authoritative disaster response assistant specialised \
-ONLY in floods and landslides.
-
-STRICT RULES:
-• NEVER give medical, legal, or financial advice beyond official source citations.
-• ALWAYS prioritise life safety: evacuate to higher ground, never enter floodwater, etc.
-• Use ONLY the retrieved context below. If information is missing or uncertain, say so \
-clearly and direct the user to call official emergency lines (119 in Sri Lanka, \
-Disaster Management Centre – DMC, or local police).
-• Cite sources briefly where possible, e.g. [UN OCHA], [NDMA guideline].
-• For instructions, use numbered steps.
-• Respond empathetically but concisely.
-
-─────────────────────────────────────────
-Conversation summary (use as background context):
-{summary}
-
-─────────────────────────────────────────
-Retrieved context (most relevant first):
-{context}
-
-─────────────────────────────────────────
-Current user question:
-{question}
-
-─────────────────────────────────────────
-Answer:"""
-)
-
 
 def _format_docs(docs: list[Document]) -> str:
     """Format retrieved documents with their source metadata."""
@@ -445,7 +391,7 @@ def generate_answer(state: DisasterState, config: RunnableConfig | None = None) 
 
     logger.info("[generate_answer] building prompt (context docs=%d)", len(docs))
 
-    chain  = _ANSWER_PROMPT | llm
+    chain = ANSWER_PROMPT | llm
     invoke_payload = {
         "summary": summary,
         "context": context,
@@ -470,24 +416,6 @@ def generate_answer(state: DisasterState, config: RunnableConfig | None = None) 
 
 # ── Node 3: summarize_conversation ────────────────────────────
 
-_SUMMARY_PROMPT = ChatPromptTemplate.from_template(
-    """Given the current conversation summary and the latest exchange, create an updated \
-concise summary (max {max_tokens} tokens).
-
-Focus ONLY on facts relevant to floods, landslides, the user's situation, risks, \
-actions taken, location, family status, etc.
-Do NOT include chit-chat, greetings, or generic advice already widely known.
-
-Current summary:
-{summary}
-
-Latest exchange:
-User: {user_msg}
-Assistant: {assistant_msg}
-
-Updated summary (plain text, no bullet points):"""
-)
-
 
 def summarize_conversation(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """
@@ -510,9 +438,9 @@ def summarize_conversation(state: DisasterState, config: RunnableConfig | None =
     logger.info("[summarize] updating summary")
 
     llm    = _get_llm()
-    chain  = _SUMMARY_PROMPT | llm
+    chain = SUMMARY_PROMPT | llm
     invoke_payload = {
-        "max_tokens":    CFG["summary_max_tokens"],
+        "max_tokens":    CONFIG.summary_max_tokens,
         "summary":       current_summary or "(no prior summary)",
         "user_msg":      last_user,
         "assistant_msg": last_assistant,
@@ -641,7 +569,7 @@ if __name__ == "__main__":
         help="Force re-ingest chunks.json into Chroma (wipes existing DB).",
     )
     parser.add_argument(
-        "--json", default=CFG["chunks_path"],
+        "--json", default=CONFIG.chunks_path,
         help="Path to chunks file – JSON array (default: chunks.json).",
     )
     parser.add_argument(
