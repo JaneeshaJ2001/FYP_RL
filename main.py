@@ -3,12 +3,6 @@
   Disaster-Domain RAG Chatbot  (Floods & Landslides only)
   Phase 1 – Always-retrieve, summary memory, LangGraph
 ============================================================
-
-Directory layout expected:
-  disaster_chatbot.py   ← this file
-  chunks.csv            ← your pre-chunked data (columns: chunk + metadata JSON)
-  .env                  ← GROQ_API_KEY=... (or OPENAI_API_KEY=...)
-  chroma_db_disaster/   ← auto-created on first run
 """
 
 # ──────────────────────────────────────────────────────────────
@@ -39,7 +33,6 @@ from langchain_chroma import Chroma
 # LLM providers (swap via CFG below)
 from langchain_groq import ChatGroq
 # from langchain_openai import ChatOpenAI
-# from langchain_community.llms import Ollama
 
 # Langfuse tracing (optional, lazy-imported)
 get_langfuse_client = None
@@ -70,15 +63,14 @@ CFG = {
     "top_k":             3,
 
     # ── CSV ingestion ──
-    # Expected columns: "chunk" (str) and "metadata" (JSON string or dict)
-    "chunks_path":       "chunks.json",   # JSON array, JSONL, or CSV
+    "chunks_path":       "chunks.json",
 
     # ── Embeddings ──
     "embed_model":       "sentence-transformers/all-MiniLM-L6-v2",
 
     # ── LLM ──
     # Switch provider by changing "provider" + "model"
-    "llm_provider":      "groq",          # "groq" | "openai" | "ollama"
+    "llm_provider":      "groq",          # "groq" | "openai"
     "llm_model":         "llama-3.3-70b-versatile",
     "llm_temperature":   0.1,
 
@@ -110,9 +102,6 @@ def build_llm():
             temperature=temp,
             openai_api_key=os.getenv("OPENAI_API_KEY"),
         )
-    elif provider == "ollama":
-        from langchain_community.llms import Ollama
-        return Ollama(model=model)
     else:
         raise ValueError(f"Unknown LLM provider: {provider}")
 
@@ -136,14 +125,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
 def _load_chunks_file(file_path: str) -> "pd.DataFrame":
     """
     Load chunk data from:
-      1. JSON array  (your current format):
+      1. JSON array:
              [ {"metadata": {...}, "chunk": "..."}, ... ]
-      2. Bare JSON objects, one per line (JSONL):
-             {"metadata": {...}, "chunk": "..."}
-             {"metadata": {...}, "chunk": "..."}
-      3. Bare JSON objects with no separator (auto-repaired):
-             {"metadata": {...}, "chunk": "..."}{"metadata": {...}, "chunk": "..."}
-      4. CSV with columns 'chunk' and 'metadata'
 
     Returns a DataFrame with at minimum columns: 'chunk', 'metadata'.
     """
@@ -162,39 +145,6 @@ def _load_chunks_file(file_path: str) -> "pd.DataFrame":
         except Exception as e:
             logger.warning("JSON array parse failed: %s", e)
 
-    # ── 2. JSON-lines (one valid JSON object per line) ─────────
-    if raw.startswith("{"):
-        try:
-            records = [json.loads(line) for line in raw.splitlines() if line.strip()]
-            df = pd.DataFrame(records)
-            logger.info("Loaded %d records from JSON-lines", len(df))
-            return df
-        except Exception:
-            pass
-
-        # ── 3. Bare objects with no newline / comma separator ──
-        try:
-            fixed = "[" + _re.sub(r"}\s*{", "},{", raw) + "]"
-            records = json.loads(fixed)
-            df = pd.DataFrame(records)
-            logger.info("Loaded %d records after JSON repair", len(df))
-            return df
-        except Exception as e:
-            logger.warning("JSON repair failed: %s", e)
-
-    # ── 4. CSV fallback ────────────────────────────────────────
-    for kwargs in [
-        {"quotechar": '"', "doublequote": True, "engine": "c"},
-        {"engine": "python"},
-        {"engine": "python", "on_bad_lines": "skip"},
-    ]:
-        try:
-            df = pd.read_csv(file_path, **kwargs)
-            logger.info("Loaded %d rows from CSV (%s)", len(df), kwargs)
-            return df
-        except Exception as e:
-            logger.debug("CSV attempt failed (%s): %s", kwargs, e)
-
     raise ValueError(
         f"Cannot parse {file_path}.\n"
         "Expected: JSON array [ {{...}}, ... ], JSON-lines, or a CSV with "
@@ -203,22 +153,18 @@ def _load_chunks_file(file_path: str) -> "pd.DataFrame":
 
 
 def load_or_create_vectorstore(
-    csv_path: str | None = None,
+    json_path: str | None = None,
     force_recreate: bool = False,
 ) -> Chroma:
     """
-    Load an existing Chroma collection from disk, or create it from a CSV.
+    Load an existing Chroma collection from disk, or create it from a JSON file.
 
-    File format — accepts any of:
-      1. JSON array (your current format):
-           [ {"metadata": {...}, "chunk": "..."}, ... ]
-      2. JSON-lines: one JSON object per line
-      3. CSV with columns "chunk" and "metadata" (save with QUOTE_ALL)
+    File format — JSON array: [ {"metadata": {...}, "chunk": "..."}, ... ]
 
     Parameters
     ----------
-    csv_path       : path to your chunks CSV (only used on first creation)
-    force_recreate : if True, wipe the existing DB and rebuild from CSV
+    json_path       : path to your chunks JSON file (only used on first creation)
+    force_recreate : if True, wipe the existing DB and rebuild from JSON
     """
     embeddings = build_embeddings()
     chroma_dir = CFG["chroma_dir"]
@@ -239,12 +185,12 @@ def load_or_create_vectorstore(
                     collection, vectorstore._collection.count())
         return vectorstore
 
-    # ── Build from CSV ──────────────────────────────────────────
-    if csv_path is None:
-        csv_path = CFG["chunks_path"]
+    # ── Build from JSON ──────────────────────────────────────────
+    if json_path is None:
+        json_path = CFG["chunks_path"]
 
-    logger.info("Creating new Chroma DB from %s", csv_path)
-    df = _load_chunks_file(csv_path)
+    logger.info("Creating new Chroma DB from %s", json_path)
+    df = _load_chunks_file(json_path)
 
     documents: list[Document] = []
     for _, row in df.iterrows():
@@ -300,63 +246,6 @@ class DisasterState(TypedDict):
     retrieved_docs: list[Document]
     # Final assistant answer
     answer:         str
-
-
-def _truncate_text(text: str, max_chars: int = 220) -> str:
-    text = text.replace("\n", " ").strip()
-    if len(text) <= max_chars:
-        return text
-    return text[: max_chars - 3] + "..."
-
-
-def _serialize_message(msg: Any) -> dict[str, str]:
-    if isinstance(msg, HumanMessage):
-        role = "user"
-    elif isinstance(msg, AIMessage):
-        role = "assistant"
-    elif isinstance(msg, dict):
-        role = str(msg.get("role") or msg.get("type") or "message")
-    else:
-        role = getattr(msg, "type", msg.__class__.__name__)
-
-    if isinstance(msg, dict):
-        raw_content = msg.get("content", "")
-    else:
-        raw_content = getattr(msg, "content", "")
-
-    content = raw_content if isinstance(raw_content, str) else str(raw_content)
-    return {
-        "role": role,
-        "content": _truncate_text(content, max_chars=300),
-    }
-
-
-def _state_snapshot_for_print(state_values: dict[str, Any]) -> dict[str, Any]:
-    docs = state_values.get("retrieved_docs", []) or []
-    messages = state_values.get("messages", []) or []
-
-    docs_preview = []
-    for i, doc in enumerate(docs, 1):
-        if isinstance(doc, Document):
-            docs_preview.append({
-                "rank": i,
-                "metadata": doc.metadata,
-                "content_preview": _truncate_text(doc.page_content),
-            })
-        else:
-            docs_preview.append({
-                "rank": i,
-                "value": _truncate_text(str(doc)),
-            })
-
-    return {
-        "query": state_values.get("query", ""),
-        "summary": state_values.get("summary", ""),
-        "answer": _truncate_text(state_values.get("answer", ""), max_chars=500),
-        "message_count": len(messages),
-        "messages_last_6": [_serialize_message(m) for m in messages[-6:]],
-        "retrieved_docs": docs_preview,
-    }
 
 
 # ──────────────────────────────────────────────────────────────
@@ -698,7 +587,6 @@ def run_chat_loop(compiled_graph, thread_id: str = "default-session"):
     print("  Type 'exit' or 'quit' to end | thread:", thread_id)
     print("="*60 + "\n")
 
-    state_config = {"configurable": {"thread_id": thread_id}}
     run_config = _build_run_config(thread_id)
 
     try:
@@ -733,14 +621,6 @@ def run_chat_loop(compiled_graph, thread_id: str = "default-session"):
                 else:
                     print("\nAssistant: [No answer generated – please try again]\n")
 
-                # Show end-of-turn state snapshot (this becomes next-turn input via checkpointing)
-                state_snapshot = compiled_graph.get_state(state_config)
-                state_values = state_snapshot.values if state_snapshot else {}
-                printable = _state_snapshot_for_print(state_values)
-                print("State snapshot (end of turn / next-turn input):")
-                print(json.dumps(printable, indent=2, ensure_ascii=False))
-                print()
-
             except Exception as exc:
                 logger.error("Graph execution error: %s", exc, exc_info=True)
                 print(f"\n[Error] {exc}\n")
@@ -758,11 +638,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Disaster RAG Chatbot")
     parser.add_argument(
         "--ingest", action="store_true",
-        help="Force re-ingest chunks.csv into Chroma (wipes existing DB).",
+        help="Force re-ingest chunks.json into Chroma (wipes existing DB).",
     )
     parser.add_argument(
-        "--csv", default=CFG["chunks_path"],
-        help="Path to chunks file – JSON array, JSONL, or CSV (default: chunks.json).",
+        "--json", default=CFG["chunks_path"],
+        help="Path to chunks file – JSON array (default: chunks.json).",
     )
     parser.add_argument(
         "--thread", default="session-001",
@@ -772,8 +652,8 @@ if __name__ == "__main__":
 
     # ── Optional one-time ingestion ────────────────────────────
     if args.ingest:
-        logger.info("Ingestion requested – rebuilding vector store from %s", args.csv)
-        _vectorstore = load_or_create_vectorstore(csv_path=args.csv, force_recreate=True)
+        logger.info("Ingestion requested – rebuilding vector store from %s", args.json)
+        _vectorstore = load_or_create_vectorstore(json_path=args.json, force_recreate=True)
     else:
         # Lazy-load on first retrieval call
         logger.info("Vector store will be loaded lazily on first query.")
