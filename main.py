@@ -18,6 +18,7 @@ import os
 import json
 import logging
 import ast
+import importlib
 from typing import Annotated, Any
 
 import pandas as pd
@@ -27,6 +28,7 @@ from dotenv import load_dotenv
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableConfig
 
 # Embeddings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -38,6 +40,10 @@ from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 # from langchain_openai import ChatOpenAI
 # from langchain_community.llms import Ollama
+
+# Langfuse tracing (optional, lazy-imported)
+get_langfuse_client = None
+LangfuseCallbackHandler = None
 
 # LangGraph
 from langgraph.graph import StateGraph, START, END
@@ -78,6 +84,11 @@ CFG = {
 
     # ── Memory ──
     "summary_max_tokens": 300,
+
+    # ── Observability ──
+    # Tracing auto-enables when Langfuse keys are present in environment
+    "langfuse_enabled": True,
+    "langfuse_tags":    ["disaster-rag", "langgraph"],
 }
 
 
@@ -108,6 +119,13 @@ def build_llm():
 
 def build_embeddings():
     return HuggingFaceEmbeddings(model_name=CFG["embed_model"])
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 # ──────────────────────────────────────────────────────────────
@@ -348,6 +366,8 @@ def _state_snapshot_for_print(state_values: dict[str, Any]) -> dict[str, Any]:
 # ── Singletons (initialised once at module level) ──────────────
 _llm:         Any = None
 _vectorstore: Any = None
+_langfuse_handler: Any = None
+_langfuse_initialized = False
 
 
 def _get_llm():
@@ -364,6 +384,92 @@ def _get_vectorstore():
     return _vectorstore
 
 
+def _get_langfuse_handler():
+    """Create a singleton Langfuse callback handler when credentials exist."""
+    global _langfuse_handler, _langfuse_initialized
+    global get_langfuse_client, LangfuseCallbackHandler
+
+    if _langfuse_initialized:
+        return _langfuse_handler
+
+    _langfuse_initialized = True
+
+    tracing_enabled = CFG.get("langfuse_enabled", True) and _env_flag(
+        "LANGFUSE_TRACING_ENABLED", default=True
+    )
+    if not tracing_enabled:
+        logger.info("Langfuse tracing disabled via configuration.")
+        return None
+
+    if not os.getenv("LANGFUSE_PUBLIC_KEY") or not os.getenv("LANGFUSE_SECRET_KEY"):
+        logger.info("Langfuse keys not found in environment; tracing disabled.")
+        return None
+
+    if get_langfuse_client is None or LangfuseCallbackHandler is None:
+        try:
+            langfuse_module = importlib.import_module("langfuse")
+            langfuse_lc_module = importlib.import_module("langfuse.langchain")
+            get_langfuse_client = getattr(langfuse_module, "get_client")
+            LangfuseCallbackHandler = getattr(langfuse_lc_module, "CallbackHandler")
+        except Exception:
+            logger.warning("Langfuse SDK not installed; tracing disabled.")
+            return None
+
+    try:
+        # Ensure client singleton is initialised before creating callbacks.
+        get_langfuse_client()
+        _langfuse_handler = LangfuseCallbackHandler()
+        logger.info("Langfuse tracing enabled.")
+    except Exception as exc:
+        logger.warning("Failed to initialise Langfuse tracing: %s", exc)
+        _langfuse_handler = None
+
+    return _langfuse_handler
+
+
+def _extract_invoke_config(config: RunnableConfig | None) -> dict[str, Any]:
+    """Forward callbacks/metadata from graph runtime config to LangChain calls."""
+    if not config:
+        return {}
+
+    invoke_config: dict[str, Any] = {}
+    callbacks = config.get("callbacks")
+    metadata = config.get("metadata")
+
+    if callbacks:
+        invoke_config["callbacks"] = callbacks
+    if metadata:
+        invoke_config["metadata"] = metadata
+
+    return invoke_config
+
+
+def _build_run_config(thread_id: str) -> dict[str, Any]:
+    """Build LangGraph run config and attach Langfuse callbacks when available."""
+    run_config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+    handler = _get_langfuse_handler()
+
+    if handler is not None:
+        run_config["callbacks"] = [handler]
+        run_config["metadata"] = {
+            "langfuse_session_id": thread_id,
+            "langfuse_tags": CFG.get("langfuse_tags", ["langgraph"]),
+        }
+
+    return run_config
+
+
+def _flush_langfuse() -> None:
+    """Flush telemetry so short-lived runs do not lose traces on shutdown."""
+    if _langfuse_handler is None or get_langfuse_client is None:
+        return
+
+    try:
+        get_langfuse_client().flush()
+    except Exception as exc:
+        logger.debug("Langfuse flush skipped: %s", exc)
+
+
 # ── Node 1: retrieve ───────────────────────────────────────────
 # NOTE ▼▼▼  Phase-2 insertion point ▼▼▼
 # To add a "should_retrieve" decision node later:
@@ -372,7 +478,7 @@ def _get_vectorstore():
 #   3. The retrieve node itself stays unchanged.
 # ──────────────────────────────────────────────────────────────
 
-def retrieve(state: DisasterState) -> dict:
+def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """
     Always retrieve top-K documents from Chroma for the current query.
     Phase 2: wrap with a conditional router to make retrieval optional.
@@ -384,7 +490,12 @@ def retrieve(state: DisasterState) -> dict:
         search_type="similarity",               # swap to "mmr" for diversity
         search_kwargs={"k": CFG["top_k"]},
     )
-    docs = retriever.invoke(query)
+    invoke_config = _extract_invoke_config(config)
+    docs = (
+        retriever.invoke(query, config=invoke_config)
+        if invoke_config
+        else retriever.invoke(query)
+    )
     logger.info("[retrieve] retrieved %d docs", len(docs))
     return {"retrieved_docs": docs}
 
@@ -435,7 +546,7 @@ def _format_docs(docs: list[Document]) -> str:
     return "\n\n".join(parts) if parts else "No relevant context found."
 
 
-def generate_answer(state: DisasterState) -> dict:
+def generate_answer(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """Generate a safety-focused answer using retrieved context + conversation summary."""
     llm     = _get_llm()
     docs    = state.get("retrieved_docs", [])
@@ -446,11 +557,17 @@ def generate_answer(state: DisasterState) -> dict:
     logger.info("[generate_answer] building prompt (context docs=%d)", len(docs))
 
     chain  = _ANSWER_PROMPT | llm
-    result = chain.invoke({
-        "summary":  summary,
-        "context":  context,
+    invoke_payload = {
+        "summary": summary,
+        "context": context,
         "question": query,
-    })
+    }
+    invoke_config = _extract_invoke_config(config)
+    result = (
+        chain.invoke(invoke_payload, config=invoke_config)
+        if invoke_config
+        else chain.invoke(invoke_payload)
+    )
 
     answer = result.content if hasattr(result, "content") else str(result)
     logger.info("[generate_answer] answer length=%d chars", len(answer))
@@ -483,7 +600,7 @@ Updated summary (plain text, no bullet points):"""
 )
 
 
-def summarize_conversation(state: DisasterState) -> dict:
+def summarize_conversation(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """
     Maintain a running summary instead of full history to keep the context window small.
     First turn: skip (no previous exchange to summarise yet).
@@ -505,12 +622,18 @@ def summarize_conversation(state: DisasterState) -> dict:
 
     llm    = _get_llm()
     chain  = _SUMMARY_PROMPT | llm
-    result = chain.invoke({
+    invoke_payload = {
         "max_tokens":    CFG["summary_max_tokens"],
         "summary":       current_summary or "(no prior summary)",
         "user_msg":      last_user,
         "assistant_msg": last_assistant,
-    })
+    }
+    invoke_config = _extract_invoke_config(config)
+    result = (
+        chain.invoke(invoke_payload, config=invoke_config)
+        if invoke_config
+        else chain.invoke(invoke_payload)
+    )
 
     new_summary = result.content if hasattr(result, "content") else str(result)
     logger.info("[summarize] new summary length=%d chars", len(new_summary))
@@ -575,50 +698,54 @@ def run_chat_loop(compiled_graph, thread_id: str = "default-session"):
     print("  Type 'exit' or 'quit' to end | thread:", thread_id)
     print("="*60 + "\n")
 
-    config = {"configurable": {"thread_id": thread_id}}
+    state_config = {"configurable": {"thread_id": thread_id}}
+    run_config = _build_run_config(thread_id)
 
-    while True:
-        user_input = input("You: ").strip()
-        if not user_input:
-            continue
-        if user_input.lower() in {"exit", "quit", "bye"}:
-            print("Assistant: Stay safe. Goodbye.")
-            break
+    try:
+        while True:
+            user_input = input("You: ").strip()
+            if not user_input:
+                continue
+            if user_input.lower() in {"exit", "quit", "bye"}:
+                print("Assistant: Stay safe. Goodbye.")
+                break
 
-        # Build initial state for this turn
-        input_state: DisasterState = {
-            "messages":       [HumanMessage(content=user_input)],
-            "query":          user_input,
-            "summary":        "",        # MemorySaver will restore previous value
-            "retrieved_docs": [],
-            "answer":         "",
-        }
+            # Build initial state for this turn
+            input_state: DisasterState = {
+                "messages":       [HumanMessage(content=user_input)],
+                "query":          user_input,
+                "summary":        "",        # MemorySaver will restore previous value
+                "retrieved_docs": [],
+                "answer":         "",
+            }
 
-        try:
-            # stream() yields intermediate state dicts; we take the final answer
-            final_state = None
-            for event in compiled_graph.stream(input_state, config=config):
-                # Each event is {node_name: partial_state}
-                for node, partial in event.items():
-                    if "answer" in partial and partial["answer"]:
-                        final_state = partial
+            try:
+                # stream() yields intermediate state dicts; we take the final answer
+                final_state = None
+                for event in compiled_graph.stream(input_state, config=run_config):
+                    # Each event is {node_name: partial_state}
+                    for node, partial in event.items():
+                        if "answer" in partial and partial["answer"]:
+                            final_state = partial
 
-            if final_state and final_state.get("answer"):
-                print(f"\nAssistant: {final_state['answer']}\n")
-            else:
-                print("\nAssistant: [No answer generated – please try again]\n")
+                if final_state and final_state.get("answer"):
+                    print(f"\nAssistant: {final_state['answer']}\n")
+                else:
+                    print("\nAssistant: [No answer generated – please try again]\n")
 
-            # Show end-of-turn state snapshot (this becomes next-turn input via checkpointing)
-            state_snapshot = compiled_graph.get_state(config)
-            state_values = state_snapshot.values if state_snapshot else {}
-            printable = _state_snapshot_for_print(state_values)
-            print("State snapshot (end of turn / next-turn input):")
-            print(json.dumps(printable, indent=2, ensure_ascii=False))
-            print()
+                # Show end-of-turn state snapshot (this becomes next-turn input via checkpointing)
+                state_snapshot = compiled_graph.get_state(state_config)
+                state_values = state_snapshot.values if state_snapshot else {}
+                printable = _state_snapshot_for_print(state_values)
+                print("State snapshot (end of turn / next-turn input):")
+                print(json.dumps(printable, indent=2, ensure_ascii=False))
+                print()
 
-        except Exception as exc:
-            logger.error("Graph execution error: %s", exc, exc_info=True)
-            print(f"\n[Error] {exc}\n")
+            except Exception as exc:
+                logger.error("Graph execution error: %s", exc, exc_info=True)
+                print(f"\n[Error] {exc}\n")
+    finally:
+        _flush_langfuse()
 
 
 # ──────────────────────────────────────────────────────────────
