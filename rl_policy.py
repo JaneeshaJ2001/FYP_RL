@@ -122,8 +122,19 @@ class TransformerHeadPolicy(ActorCriticPolicy):
     # ── SB3 hooks ─────────────────────────────────────────────────────────────
 
     def _build_mlp_extractor(self) -> None:
-        """Override to prevent SB3 from building its own MLP."""
-        pass  # our trunk is built in __init__
+        """Override to prevent SB3 from building its own MLP.
+        A dummy mlp_extractor with empty arch is still created so that SB3's
+        internal helpers (e.g. set_training_mode) can access the attribute.
+        Our trunk is built in __init__ and used by the overridden forward/
+        evaluate_actions/predict_values methods instead.
+        """
+        from stable_baselines3.common.torch_layers import MlpExtractor
+        self.mlp_extractor = MlpExtractor(
+            self.features_dim,
+            net_arch=[],
+            activation_fn=nn.ReLU,
+            device=self.device,
+        )
 
     def forward(
         self,
