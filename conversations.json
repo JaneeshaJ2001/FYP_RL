@@ -1,0 +1,67 @@
+[
+  {
+    "episode_id": "flood_negombo_001",
+    "turns": [
+      {
+        "query": "Hello, water is entering my house in Negombo near the canal since last night. What should I do now?",
+        "ground_truth": "Immediately move to the highest floor or roof if possible. Do not walk through flood water. Turn off electricity at the main switch if safe to do so. Call 119 or your Grama Niladhari for rescue. Gather important documents, medicines, phone charger and dry clothes in a waterproof bag."
+      },
+      {
+        "query": "I'm on the first floor now but water keeps rising. When should I leave the house?",
+        "ground_truth": "If water inside reaches knee level or continues to rise rapidly, evacuate immediately to higher ground or a designated evacuation centre. Do not wait. Prioritize children and elderly. Listen for official announcements via radio or mobile alerts."
+      },
+      {
+        "query": "Where is the nearest safe place or evacuation centre?",
+        "ground_truth": "Contact your Grama Niladhari or call 119 / DMC hotline 117 for the current nearest centre. In Negombo common locations include: Katuwapitiya schools, St. Sebastian's Church area, or higher-ground government buildings. Bring ID, medicines and baby supplies if you have infants."
+      },
+      {
+        "query": "Thank you. We reached a safer place. How long will the flooding last?",
+        "ground_truth": "In Negombo, urban flooding from heavy rain usually recedes in 12–48 hours after rain stops, depending on drainage and upstream rainfall. Stay updated via DMC alerts. Do not return home until authorities say it is safe."
+      }
+    ]
+  },
+
+  {
+    "episode_id": "landslide_pitipana_002",
+    "turns": [
+      {
+        "query": "Heavy rain all night and now I see small cracks in the ground behind my house on the slope. Is this dangerous?",
+        "ground_truth": "Yes — cracks in the ground, especially on a slope after heavy rain, are a serious warning sign of potential landslide. Evacuate immediately to flat, stable ground away from the slope. Inform neighbours and call 119 or police to report the risk."
+      },
+      {
+        "query": "We left the house. Now we're staying at a relative's place. Can we go back tomorrow if it doesn't rain?",
+        "ground_truth": "No — do not return for at least 24–48 hours after rain stops, even if it looks calm. Landslides can occur days later due to saturated soil. Wait for official clearance from authorities or DMC assessment teams."
+      },
+      {
+        "query": "My neighbour went back to check. He says the house is still standing but ground is very wet. Should he stay?",
+        "ground_truth": "He should leave immediately. No property is worth risking life. Sudden slope failure can happen without further warning. Only trained assessment teams should enter risky areas."
+      },
+      {
+        "query": "How can we get food and drinking water while waiting here?",
+        "ground_truth": "Contact your Grama Niladhari or nearest temple/church/mosque — they usually coordinate relief during disasters. Red Cross, Sarvodaya and government teams distribute dry rations, bottled water and cooked food at relief points. Register your family for assistance."
+      },
+      {
+        "query": "We're very worried about our house. Will the government help if it's damaged or destroyed?",
+        "ground_truth": "Yes — after the area is declared safe, register the damage with your Grama Niladhari or Divisional Secretariat. The government provides partial/full reconstruction assistance or relocation support in declared high-risk zones through the Ministry of Disaster Management."
+      }
+    ]
+  },
+
+  {
+    "episode_id": "flood_followup_003",
+    "turns": [
+      {
+        "query": "The water has gone down but everything is muddy and smelly. Is it safe to start cleaning now?",
+        "ground_truth": "Wait until authorities confirm no more flooding risk. Flood water is contaminated — wear rubber boots and gloves. Do not let children play in it. Clean with bleach solution (1 cup bleach in 4 liters water) after removing mud. Check for electrical hazards, snakes and structural damage before going downstairs."
+      },
+      {
+        "query": "Some of our food got wet. Can we still eat it?",
+        "ground_truth": "No — discard any food that was touched by flood water (perishables, open packages, cardboard containers). Keep canned food if cans are not damaged/dented. Boil water or use bottled water until authorities say tap water is safe."
+      },
+      {
+        "query": "My child has a fever now. What should I do?",
+        "ground_truth": "Seek medical help immediately — go to the nearest hospital or call 1990 (Suwa Seriya ambulance). Floods increase risk of waterborne diseases, leptospirosis, dengue. Do not self-medicate without advice. Keep child hydrated with safe water."
+      }
+    ]
+  }
+]
