@@ -16,6 +16,7 @@ langchain-groq>=0.1.9          # Groq (default)
 # ── Embeddings ─────────────────────────────────────────────────
 sentence-transformers>=2.7.0
 torch>=2.0.0
+transformers>=4.40.0
 
 # ── Vector store ───────────────────────────────────────────────
 chromadb>=0.5.0
@@ -23,6 +24,12 @@ chromadb>=0.5.0
 # ── Data / utilities ───────────────────────────────────────────
 pandas>=2.0.0
 python-dotenv>=1.0.0
+numpy>=1.26.0
+
+# ── Reinforcement Learning ─────────────────────────────────────
+stable-baselines3>=2.3.0
+gymnasium>=0.29.0
+tensorboard>=2.16.0
 
 # ── Observability ──────────────────────────────────────────────
 langfuse>=3.0.0

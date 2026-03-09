@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
@@ -33,11 +33,21 @@ class DisasterState(TypedDict):
     retrieved_docs: list[Document]
     # Final assistant answer
     answer: str
+    # Retrieval decision: 1 = retrieve, 0 = skip  (set by decide_retrieve node)
+    action: int
+    # Graph operation mode: "baseline" forces action=1; "policy" uses the RL policy
+    mode: Literal["baseline", "policy"]
+    # Optional: forced action injected by the RL training environment
+    forced_action: int | None
 
 
-# Singletons (initialized once at module level)
+# ──────────────────────────────────────────────────────────────────────────────
+# Singletons
+# ──────────────────────────────────────────────────────────────────────────────
 _llm: Any = None
 _vectorstore: Any = None
+# Lazy-loaded RL policy (only needed in "policy" mode)
+_rl_policy: Any = None
 
 
 def build_llm():
@@ -84,6 +94,70 @@ def _get_vectorstore():
     return _vectorstore
 
 
+def _load_rl_policy():
+    """Lazy-load the saved PPO policy.  Returns None if not available."""
+    global _rl_policy
+    if _rl_policy is not None:
+        return _rl_policy
+    try:
+        from stable_baselines3 import PPO
+        path = CONFIG.policy_model_path
+        if os.path.exists(path):
+            _rl_policy = PPO.load(path)
+            logger.info("RL policy loaded from %s", path)
+        else:
+            logger.warning("Policy file %s not found; falling back to baseline.", path)
+    except Exception as exc:
+        logger.warning("Could not load RL policy: %s", exc)
+    return _rl_policy
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# decide_retrieve node
+# ──────────────────────────────────────────────────────────────────────────────
+
+def decide_retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict:
+    """
+    Decide whether to retrieve (action=1) or skip retrieval (action=0).
+
+    Priority order:
+      1. forced_action  - set by RL env during training
+      2. mode="baseline" - always retrieve
+      3. mode="policy"   - ask the RL policy
+    """
+    forced = state.get("forced_action")
+    if forced is not None:
+        logger.info("[decide_retrieve] forced_action=%d", forced)
+        return {"action": int(forced)}
+
+    mode = state.get("mode", "baseline")
+    if mode == "baseline":
+        logger.info("[decide_retrieve] baseline mode → retrieve")
+        return {"action": 1}
+
+    # policy mode
+    policy = _load_rl_policy()
+    if policy is None:
+        logger.warning("[decide_retrieve] policy unavailable → fallback retrieve")
+        return {"action": 1}
+
+    from state_encoder import encode_state  # local import to avoid circular deps
+    obs = encode_state(state.get("summary", ""), state["query"])
+    action_arr, _ = policy.predict(obs, deterministic=True)
+    action = int(action_arr)
+    logger.info("[decide_retrieve] policy action=%d", action)
+    return {"action": action}
+
+
+def retrieval_router(state: DisasterState) -> str:
+    """Conditional edge function: route to 'retrieve' or 'generate_answer'."""
+    return "retrieve" if state.get("action", 1) == 1 else "generate_answer"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# retrieve node
+# ──────────────────────────────────────────────────────────────────────────────
+
 def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """Always retrieve top-K documents from Chroma for the current query."""
     query = state["query"]
@@ -104,6 +178,8 @@ def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict
 
 
 def _format_docs(docs: list[Document]) -> str:
+    if not docs:
+        return "No retrieved context available for this turn."
     parts = []
     for i, doc in enumerate(docs, 1):
         meta = doc.metadata
@@ -114,18 +190,27 @@ def _format_docs(docs: list[Document]) -> str:
             parts.append(f"[{i}] {doc.page_content}\n    Source -> {source_tag}")
         else:
             parts.append(f"[{i}] {doc.page_content}")
-    return "\n\n".join(parts) if parts else "No relevant context found."
+    return "\n\n".join(parts)
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# generate_answer node
+# ──────────────────────────────────────────────────────────────────────────────
 
 def generate_answer(state: DisasterState, config: RunnableConfig | None = None) -> dict:
     """Generate a safety-focused answer using retrieved context and summary."""
     llm = _get_llm()
+    # retrieved_docs may be empty if retrieval was skipped
     docs = state.get("retrieved_docs", [])
     context = _format_docs(docs)
     summary = state.get("summary", "")
     query = state["query"]
 
-    logger.info("[generate_answer] building prompt (context docs=%d)", len(docs))
+    logger.info(
+        "[generate_answer] building prompt (context docs=%d, retrieval_skipped=%s)",
+        len(docs),
+        len(docs) == 0,
+    )
 
     chain = ANSWER_PROMPT | llm
     invoke_payload = {
@@ -148,6 +233,10 @@ def generate_answer(state: DisasterState, config: RunnableConfig | None = None) 
     }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# summarize_conversation node
+# ──────────────────────────────────────────────────────────────────────────────
+
 def summarize_conversation(
     state: DisasterState,
     config: RunnableConfig | None = None,
@@ -155,8 +244,8 @@ def summarize_conversation(
     """Maintain a running summary to keep the context window small."""
     messages = state.get("messages", [])
 
-    human_msgs = [message for message in messages if isinstance(message, HumanMessage)]
-    ai_msgs = [message for message in messages if isinstance(message, AIMessage)]
+    human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
+    ai_msgs = [m for m in messages if isinstance(m, AIMessage)]
 
     if not human_msgs or not ai_msgs:
         return {"summary": state.get("summary", "")}

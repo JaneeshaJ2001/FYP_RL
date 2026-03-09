@@ -68,6 +68,18 @@ class AppConfig:
         default_factory=lambda: ("disaster-rag", "langgraph")
     )
 
+    # ── RL / retrieval policy ──────────────────────────────────────────
+    # Encoder backbone for the policy (frozen)
+    policy_encoder_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Output dim of the chosen encoder (384 for MiniLM, 768 for distilbert)
+    policy_encoder_dim: int = 384
+    # Path to a saved PPO policy zip
+    policy_model_path: str = "policy_model.zip"
+    # Cost per retrieved token (β)
+    rl_beta: float = 0.01
+    # Judge LLM temperature (low = deterministic scoring)
+    judge_temperature: float = 0.0
+
     @classmethod
     def from_env(cls) -> "AppConfig":
         defaults = cls()
@@ -90,6 +102,19 @@ class AppConfig:
             ),
             langfuse_tags=_to_tags(
                 os.getenv("LANGFUSE_TAGS"), defaults.langfuse_tags
+            ),
+            policy_encoder_model=os.getenv(
+                "POLICY_ENCODER_MODEL", defaults.policy_encoder_model
+            ),
+            policy_encoder_dim=_to_int(
+                os.getenv("POLICY_ENCODER_DIM"), defaults.policy_encoder_dim
+            ),
+            policy_model_path=os.getenv(
+                "POLICY_MODEL_PATH", defaults.policy_model_path
+            ),
+            rl_beta=_to_float(os.getenv("RL_BETA"), defaults.rl_beta),
+            judge_temperature=_to_float(
+                os.getenv("JUDGE_TEMPERATURE"), defaults.judge_temperature
             ),
         )
 
