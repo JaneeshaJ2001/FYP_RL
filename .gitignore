@@ -2,3 +2,5 @@ __pycache__/
 venv/
 .env
 chroma_db_disaster/
+tb_logs/
+policy_checkpoints/

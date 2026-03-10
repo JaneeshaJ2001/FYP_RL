@@ -10,7 +10,7 @@ langgraph>=0.2.0
 
 # ── LLM providers (uncomment the one you use) ─────────────────
 langchain-groq>=0.1.9          # Groq (default)
-# langchain-openai>=0.2.0      # OpenAI
+langchain-openai>=0.2.0      # OpenAI
 # ollama>=0.3.0                # Ollama (local)
 
 # ── Embeddings ─────────────────────────────────────────────────

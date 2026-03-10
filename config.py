@@ -55,8 +55,8 @@ class AppConfig:
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     # LLM
-    llm_provider: str = "groq"  # groq | openai
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_provider: str = "openai"  # groq | openai
+    llm_model: str = "gpt-4.1-mini" # "llama-3.3-70b-versatile"
     llm_temperature: float = 0.1
 
     # Memory
