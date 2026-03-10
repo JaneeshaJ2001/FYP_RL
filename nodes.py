@@ -116,7 +116,7 @@ def _load_rl_policy():
 # decide_retrieve node
 # ──────────────────────────────────────────────────────────────────────────────
 
-def decide_retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict:
+def decide_retrieve(state: DisasterState, config: RunnableConfig) -> dict:
     """
     Decide whether to retrieve (action=1) or skip retrieval (action=0).
 
@@ -158,7 +158,7 @@ def retrieval_router(state: DisasterState) -> str:
 # retrieve node
 # ──────────────────────────────────────────────────────────────────────────────
 
-def retrieve(state: DisasterState, config: RunnableConfig | None = None) -> dict:
+def retrieve(state: DisasterState, config: RunnableConfig) -> dict:
     """Always retrieve top-K documents from Chroma for the current query."""
     query = state["query"]
     logger.info("[retrieve] query=%r", query)
@@ -197,7 +197,7 @@ def _format_docs(docs: list[Document]) -> str:
 # generate_answer node
 # ──────────────────────────────────────────────────────────────────────────────
 
-def generate_answer(state: DisasterState, config: RunnableConfig | None = None) -> dict:
+def generate_answer(state: DisasterState, config: RunnableConfig) -> dict:
     """Generate a safety-focused answer using retrieved context and summary."""
     llm = _get_llm()
     # retrieved_docs may be empty if retrieval was skipped
@@ -239,7 +239,7 @@ def generate_answer(state: DisasterState, config: RunnableConfig | None = None) 
 
 def summarize_conversation(
     state: DisasterState,
-    config: RunnableConfig | None = None,
+    config: RunnableConfig,
 ) -> dict:
     """Maintain a running summary to keep the context window small."""
     messages = state.get("messages", [])
