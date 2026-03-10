@@ -120,15 +120,16 @@ class RAGDecisionEnv(gym.Env):
         ground_truth: str = turn["ground_truth"]
 
         # ── Run one graph turn with forced action ─────────────────────────────
+        _action = int(action)  # cast numpy.int64 → int for msgpack serialisation
         input_state = {
             "messages": [HumanMessage(content=query)],
             "query": query,
             "summary": self._summary,
             "retrieved_docs": [],
             "answer": "",
-            "action": action,
+            "action": _action,
             "mode": "baseline",          # mode ignored when forced_action is set
-            "forced_action": action,     # forces decide_retrieve to use this value
+            "forced_action": _action,    # forces decide_retrieve to use this value
         }
         run_config = build_run_config(self._thread_id)
 
