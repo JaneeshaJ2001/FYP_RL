@@ -74,7 +74,7 @@ class AppConfig:
     # Output dim of the chosen encoder (384 for MiniLM, 768 for distilbert)
     policy_encoder_dim: int = 384
     # Path to a saved PPO policy zip
-    policy_model_path: str = "policy_model.zip"
+    policy_model_path: str = "policy_checkpoints/policy_model_final.zip"
     # Cost per retrieved token (β)
     rl_beta: float = 0.01
     # Judge LLM temperature (low = deterministic scoring)
