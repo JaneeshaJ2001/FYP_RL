@@ -127,11 +127,10 @@ class RAGDecisionEnv(gym.Env):
             "summary": self._summary,
             "retrieved_docs": [],
             "answer": "",
-            "action": _action,
-            "mode": "baseline",          # mode ignored when forced_action is set
-            "forced_action": _action,    # forces decide_retrieve to use this value
+            "mode": "baseline",
         }
         run_config = build_run_config(self._thread_id)
+        run_config["configurable"]["forced_action"] = _action  # per-invocation, not persisted in state
 
         final_state: dict = {}
         try:

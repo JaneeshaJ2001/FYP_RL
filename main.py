@@ -29,7 +29,7 @@ _NODE_SEP = "─" * 56
 # All 8 fields of DisasterState, in display order
 _STATE_FIELDS = (
     "messages", "summary", "query", "retrieved_docs",
-    "answer", "action", "mode", "forced_action",
+    "answer", "action", "mode",
 )
 
 
@@ -99,7 +99,6 @@ def run_chat_loop(
                 "answer": "",
                 "action": 1,
                 "mode": mode,          # "baseline" forces retrieve; "policy" uses RL
-                "forced_action": None, # None = let decide_retrieve handle it
             }
 
             try:

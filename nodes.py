@@ -37,8 +37,6 @@ class DisasterState(TypedDict):
     action: int
     # Graph operation mode: "baseline" forces action=1; "policy" uses the RL policy
     mode: Literal["baseline", "policy"]
-    # Optional: forced action injected by the RL training environment
-    forced_action: int | None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -121,13 +119,13 @@ def decide_retrieve(state: DisasterState, config: RunnableConfig) -> dict:
     Decide whether to retrieve (action=1) or skip retrieval (action=0).
 
     Priority order:
-      1. forced_action  - set by RL env during training
+      1. config["configurable"]["forced_action"] - injected per-invocation by RL env
       2. mode="baseline" - always retrieve
       3. mode="policy"   - ask the RL policy
     """
-    forced = state.get("forced_action")
+    forced = (config or {}).get("configurable", {}).get("forced_action")
     if forced is not None:
-        logger.info("[decide_retrieve] forced_action=%d", forced)
+        logger.info("[decide_retrieve] forced_action=%d (from config)", forced)
         return {"action": int(forced)}
 
     mode = state.get("mode", "baseline")
