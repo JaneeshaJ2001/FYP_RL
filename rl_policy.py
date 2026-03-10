@@ -167,7 +167,15 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         entropy = distribution.entropy()
         return values, log_prob, entropy
 
+    def get_distribution(self, obs: torch.Tensor):
+        """Actor: obs → trunk → action_head → categorical distribution."""
+        features = self.extract_features(obs)
+        trunk_out = self.mlp_trunk(features)
+        logits = self.action_head(trunk_out)
+        return self._get_action_dist_from_latent(logits)
+
     def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
+        """Critic: obs → trunk → value_head → scalar value estimate."""
         features = self.extract_features(obs)
         trunk_out = self.mlp_trunk(features)
         return self.value_head(trunk_out)
