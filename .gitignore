@@ -1,6 +1,10 @@
-__pycache__/
 venv/
 .env
-chroma_db_disaster/
-tb_logs/
 policy_checkpoints/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.bin
+events.out.tfevents.*
+tb_logs/
+chroma_db_disaster/
