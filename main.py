@@ -7,6 +7,8 @@
 
 import logging
 import os
+import pprint
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 
@@ -22,21 +24,58 @@ logging.basicConfig(
 )
 logger = logging.getLogger("disaster_chatbot")
 
+_NODE_SEP = "─" * 56
+
+# All 8 fields of DisasterState, in display order
+_STATE_FIELDS = (
+    "messages", "summary", "query", "retrieved_docs",
+    "answer", "action", "mode", "forced_action",
+)
+
+
+def _print_node_state(node_name: str, state: dict[str, Any]) -> None:
+    """Pretty-print all 8 DisasterState fields after a graph node completes."""
+    from langchain_core.documents import Document
+    from langchain_core.messages import BaseMessage
+
+    print(f"\n┌── NODE: {node_name} " + "─" * max(0, 46 - len(node_name)) + "┐")
+    for key in _STATE_FIELDS:
+        val = state.get(key, "<not set>")
+        if isinstance(val, list) and val and isinstance(val[0], Document):
+            print(f"│  {key}: [{len(val)} doc(s)]")
+            for i, doc in enumerate(val, 1):
+                snippet = doc.page_content[:160].replace("\n", " ")
+                print(f"│    [{i}] {snippet!r}")
+                if doc.metadata:
+                    print(f"│         meta={doc.metadata}")
+        elif isinstance(val, list) and val and isinstance(val[0], BaseMessage):
+            print(f"│  {key}: [{len(val)} message(s)]")
+            for msg in val:
+                preview = str(msg.content)[:160].replace("\n", " ")
+                print(f"│    {type(msg).__name__}: {preview!r}")
+        elif isinstance(val, str) and len(val) > 200:
+            print(f"│  {key}: {val[:200]!r}  … ({len(val)} chars total)")
+        else:
+            print(f"│  {key}: {pprint.pformat(val, width=80, depth=3)}")
+    print("└" + _NODE_SEP + "┘")
+
 
 def run_chat_loop(
     compiled_graph,
     thread_id: str = "default-session",
     mode: str = "baseline",   # "baseline" | "policy"
+    debug: bool = False,
 ):
     """
     Simple console chat loop.
 
     mode="baseline"  → always retrieve (original behaviour, action forced=1)
     mode="policy"    → use the RL-trained policy to decide per turn
+    debug=True       → print each node's state updates as the query flows through
     """
     print("\n" + "=" * 60)
     print("  Disaster Response Assistant  (floods & landslides)")
-    print(f"  Mode: {mode.upper()}  |  Thread: {thread_id}")
+    print(f"  Mode: {mode.upper()}  |  Thread: {thread_id}  |  Debug: {'ON' if debug else 'OFF'}")
     print("  Type 'exit' or 'quit' to end")
     print("=" * 60 + "\n")
 
@@ -65,10 +104,27 @@ def run_chat_loop(
 
             try:
                 final_state = None
-                for event in compiled_graph.stream(input_state, config=run_config):
-                    for _, partial in event.items():
-                        if "answer" in partial and partial["answer"]:
-                            final_state = partial
+                if debug:
+                    # stream_mode=["updates","values"] yields (tag, data) pairs:
+                    #   "updates" → {node_name: partial}  (tells us which node ran)
+                    #   "values"  → full DisasterState snapshot after that node
+                    pending_node: str | None = None
+                    for mode_tag, data in compiled_graph.stream(
+                        input_state, config=run_config,
+                        stream_mode=["updates", "values"],
+                    ):
+                        if mode_tag == "updates":
+                            for node_name in data:
+                                pending_node = node_name
+                        elif mode_tag == "values" and pending_node is not None:
+                            _print_node_state(pending_node, data)
+                            final_state = data   # keep last; all fields present
+                            pending_node = None
+                else:
+                    for event in compiled_graph.stream(input_state, config=run_config):
+                        for _, partial in event.items():
+                            if "answer" in partial and partial["answer"]:
+                                final_state = partial
 
                 if final_state:
                     summary = final_state.get("summary", summary)
@@ -113,6 +169,11 @@ if __name__ == "__main__":
             "policy = use RL-trained retrieval policy."
         ),
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print the full state updates of each graph node for every query.",
+    )
     args = parser.parse_args()
 
     if args.ingest:
@@ -128,4 +189,4 @@ if __name__ == "__main__":
         )
 
     app = build_graph()
-    run_chat_loop(app, thread_id=args.thread, mode=args.mode)
+    run_chat_loop(app, thread_id=args.thread, mode=args.mode, debug=args.debug)
