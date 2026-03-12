@@ -153,9 +153,10 @@ class RAGDecisionEnv(gym.Env):
         judge_result = self._judge.invoke(
             {
                 "query": query,
-                "response": response,
-                "action": _action,
+                "conversation_summary": self._summary,
+                "action_taken": "retrieve" if _action == 1 else "skip",
                 "retrieved_docs": docs_text,
+                "response": response,
             }
         )
         score: float = float(judge_result.get("score", 5))

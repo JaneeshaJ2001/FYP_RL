@@ -29,33 +29,45 @@ logger = logging.getLogger("disaster_chatbot")
 # ──────────────────────────────────────────────────────────────────────────────
 
 _JUDGE_PROMPT_TEMPLATE = """\
-You are a strict judge evaluating disaster-response assistant outputs \
+You are a strict judge evaluating a disaster-response assistant \
 (domain: floods and landslides only).
 
-Rate the generated response on a scale of 1-10 using ALL criteria below:
+Assess the response against ALL four criteria below, then output ONE final overall score (1-10).
 
-1. **Accuracy** - Are the facts safe, correct and grounded?
-   Penalise heavily for hallucinations or dangerous advice.
-2. **Safety** - Is life-critical advice correct?
-   (e.g. evacuation, not entering floodwater, calling 119)
-3. **Helpfulness** - Does it address the user's actual need?
-4. **Empathy & conciseness** - Appropriate tone, not verbose.
-5. **Retrieval usage** (action={action} where 1=retrieved, 0=skipped):
-   - If action=0 (retrieval SKIPPED) but the response clearly states uncertain or hallucinated domain facts → deduct 2 points.
-   - If action=1 (retrieval USED) but the response IGNORED the retrieved documents below → deduct 2 points.
-   - If action=1 and the response correctly uses the retrieved context → award full marks for this criterion.
+1. **Relevance** — Did the response directly address what the user asked?
+   Consider the conversation summary for context on the user's intent.
+   Deduct points if the response is off-topic or answers a different question.
 
-Query:
+2. **Correctness / Faithfulness** — Are the facts consistent with the retrieved documents (if any) and general domain knowledge?
+   Penalise heavily for hallucinations, dangerous advice, or contradictions with the retrieved context.
+
+3. **Completeness** — Did the response answer enough of the user's query?
+   Deduct points for important omissions (e.g. missing evacuation steps, no emergency contact given when relevant).
+
+4. **Appropriateness of grounding** — action_taken={action_taken}  ("retrieve" = retrieval was used, "skip" = retrieval was skipped)
+   - If action_taken=retrieve and the response correctly draws on the retrieved documents → positive contribution.
+   - If action_taken=retrieve but the response ignores the retrieved context → deduct points.
+   - If action_taken=skip and the response is still accurate and sufficient → positive contribution.
+   - If action_taken=skip but the response contains uncertain or hallucinated domain facts → deduct points.
+
+Combine your assessment of all four criteria into a single overall score.
+
+Inputs
+------
+User query:
 {query}
 
-Generated response:
-{response}
+Conversation summary (prior context):
+{conversation_summary}
 
 Retrieved documents (empty if retrieval was skipped):
 {retrieved_docs}
 
+Generated response:
+{response}
+
 Output ONLY valid JSON on a single line — no markdown, no preamble:
-{{"score": <int 1-10>, "reason": "<brief explanation under 30 words>"}}
+{{"score": <int 1-10>, "reason": "<brief explanation under 40 words>"}}
 """
 
 JUDGE_PROMPT = ChatPromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
@@ -95,9 +107,10 @@ class JudgeChain:
         judge = JudgeChain()
         result = judge.invoke({
             "query": "...",
+            "conversation_summary": "...",   # prior turn summary or empty string
+            "action_taken": "retrieve",       # "retrieve" or "skip"
+            "retrieved_docs": "...",           # formatted doc text or empty string
             "response": "...",
-            "action": 1,          # 1=retrieved, 0=skipped
-            "retrieved_docs": "...",  # formatted doc text or empty string
         })
         # result → {"score": 8, "reason": "..."}
     """
@@ -107,7 +120,7 @@ class JudgeChain:
         self._chain = JUDGE_PROMPT | llm | StrOutputParser()
 
     def invoke(self, inputs: dict[str, str]) -> dict[str, Any]:
-        """Return parsed JSON dict with 'score' (int) and 'reason' (str)."""
+        """Return parsed JSON dict with 'score', criterion scores, and 'reason'."""
         raw = self._chain.invoke(inputs)
         return _parse_judge_output(raw)
 
