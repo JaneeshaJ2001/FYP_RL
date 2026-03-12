@@ -150,7 +150,7 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         features = self.extract_features(obs)
         trunk_out = self.mlp_trunk(features)
         logits = self.action_head(trunk_out)
-        values = self.value_head(trunk_out)
+        values = self.value_head(trunk_out).squeeze(-1)
         distribution = self._get_action_dist_from_latent(logits)
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
@@ -184,4 +184,4 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         """Critic: obs → trunk → value_head → scalar value estimate."""
         features = self.extract_features(obs)
         trunk_out = self.mlp_trunk(features)
-        return self.value_head(trunk_out)
+        return self.value_head(trunk_out).squeeze(-1)
