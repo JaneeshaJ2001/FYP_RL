@@ -20,19 +20,18 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import random
 from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
 from config import CONFIG
 from rl_env import RAGDecisionEnv
 from rl_policy import TransformerHeadPolicy
+from training_trace import configure_training_trace, trace_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,6 +110,12 @@ class RetrievalStatsCallback(BaseCallback):
             )
             self.logger.record("custom/retrieval_rate", retrieve_rate)
             self.logger.record("custom/mean_judge_score", mean_reward)
+            trace_event(
+                "ROLLOUT_SUMMARY",
+                step=self.n_calls,
+                retrieval_rate_pct=retrieve_rate * 100,
+                mean_judge_score=mean_reward,
+            )
             self._actions.clear()
             self._rewards.clear()
 
@@ -127,10 +132,27 @@ def train(
     total_timesteps: int = 20_000,
     save_path: str = "policy_model",
     tensorboard_log: str = "./tb_logs",
+    trace_log: str = "./training_logs/training_trace.log",
 ):
+    trace_log_path = configure_training_trace(trace_log)
+    logger.info("Detailed training trace: %s", trace_log_path)
+    trace_event(
+        "TRAINING_START",
+        total_timesteps=total_timesteps,
+        train_episodes=len(train_episodes),
+        val_episodes=len(val_episodes),
+        save_path=save_path,
+        tensorboard_log=tensorboard_log,
+        trace_log=trace_log_path,
+    )
+
     logger.info("Building training environment...")
-    train_env = DummyVecEnv([lambda: RAGDecisionEnv(train_episodes, mode="train")])
-    eval_env = DummyVecEnv([lambda: RAGDecisionEnv(val_episodes, mode="eval")])
+    train_env = VecMonitor(
+        DummyVecEnv([lambda: RAGDecisionEnv(train_episodes, mode="train")])
+    )
+    eval_env = VecMonitor(
+        DummyVecEnv([lambda: RAGDecisionEnv(val_episodes, mode="eval")])
+    )
 
     # ── PPO configuration ────────────────────────────────────────────────────
     # LR is higher than typical because ONLY the tiny MLP head is updated.
@@ -180,6 +202,7 @@ def train(
     final_path = f"{save_path}/policy_model_final"
     model.save(final_path)
     logger.info("Final model saved to %s.zip", final_path)
+    trace_event("TRAINING_END", final_model_path=f"{final_path}.zip")
     return model
 
 
@@ -297,6 +320,16 @@ def evaluate(
     logger.info(
         "Tokens saved vs baseline: %.0f (%.1f%%)", tokens_saved, tokens_saved_pct
     )
+    trace_event(
+        "EVALUATION_SUMMARY",
+        policy_avg_score=_mean(policy_scores),
+        policy_retrieval_rate_pct=_mean(policy_ret) * 100,
+        policy_avg_tokens=_mean(policy_tokens),
+        baseline_avg_score=_mean(baseline_scores),
+        baseline_avg_tokens=_mean(baseline_tokens),
+        tokens_saved=tokens_saved,
+        tokens_saved_pct=tokens_saved_pct,
+    )
 
     return {
         "policy_avg_score": _mean(policy_scores),
@@ -346,6 +379,11 @@ def parse_args():
         default="./tb_logs",
         help="TensorBoard log directory",
     )
+    p.add_argument(
+        "--trace-log",
+        default="./training_logs/training_trace.log",
+        help="Path to detailed line-by-line training trace file",
+    )
     return p.parse_args()
 
 
@@ -366,6 +404,7 @@ if __name__ == "__main__":
             total_timesteps=args.timesteps,
             save_path=args.save_path,
             tensorboard_log=args.tb_log,
+            trace_log=args.trace_log,
         )
 
     results = evaluate(model, val_eps)

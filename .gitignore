@@ -8,3 +8,4 @@ __pycache__/
 events.out.tfevents.*
 tb_logs/
 chroma_db_disaster/
+training_logs/

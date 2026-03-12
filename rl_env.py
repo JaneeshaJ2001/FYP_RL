@@ -33,6 +33,7 @@ from graph import build_graph
 from nodes import _format_docs as _format_retrieved_docs
 from observability import build_run_config
 from state_encoder import encode_state
+from training_trace import trace_event
 from utils import JudgeChain, approx_token_count
 
 logger = logging.getLogger("disaster_chatbot")
@@ -87,6 +88,8 @@ class RAGDecisionEnv(gym.Env):
 
         # Stats for debugging
         self._episode_rewards: list[float] = []
+        self._episode_actions: list[int] = []
+        self._episode_counter: int = 0
 
     # ── Gym API ───────────────────────────────────────────────────────────────
 
@@ -111,6 +114,15 @@ class RAGDecisionEnv(gym.Env):
         self._summary = ""
         self._thread_id = f"rl-env-{random.randint(0, 10_000_000)}"
         self._episode_rewards = []
+        self._episode_actions = []
+        self._episode_counter += 1
+
+        trace_event(
+            "EPISODE_START",
+            mode=self.mode,
+            episode=self._episode_counter,
+            turns=len(self._current_episode),
+        )
 
         obs = self._build_obs()
         return obs, {}
@@ -140,6 +152,13 @@ class RAGDecisionEnv(gym.Env):
                         final_state.update(partial)
         except Exception as exc:
             logger.error("[env.step] graph error at turn %d: %s", self._turn_idx, exc)
+            trace_event(
+                "GRAPH_ERROR",
+                mode=self.mode,
+                episode=self._episode_counter,
+                turn=f"{self._turn_idx + 1}/{len(self._current_episode)}",
+                error=str(exc),
+            )
             # Return zero reward and end episode on graph failure
             obs = self._build_obs()
             return obs, 0.0, True, False, {"error": str(exc)}
@@ -163,11 +182,23 @@ class RAGDecisionEnv(gym.Env):
         token_cost: float = self.beta * approx_token_count(retrieved_docs)
         reward: float = score - token_cost
 
-        logger.debug(
-            "[env.step] turn=%d action=%d score=%.1f token_cost=%.3f reward=%.3f",
-            self._turn_idx, action, score, token_cost, reward,
+        action_label = "RETRIEVE" if _action == 1 else "SKIP"
+        trace_event(
+            "TURN",
+            mode=self.mode,
+            episode=self._episode_counter,
+            turn=f"{self._turn_idx + 1}/{len(self._current_episode)}",
+            action=action_label,
+            score=score,
+            token_cost=token_cost,
+            reward=reward,
+            docs=len(retrieved_docs),
+            query=query,
+            response=response,
+            judge=judge_result.get("reason", ""),
         )
         self._episode_rewards.append(reward)
+        self._episode_actions.append(_action)
 
         # ── Advance turn ──────────────────────────────────────────────────────
         self._turn_idx += 1
@@ -175,10 +206,18 @@ class RAGDecisionEnv(gym.Env):
 
         if done:
             avg_reward = sum(self._episode_rewards) / len(self._episode_rewards)
+            ret_rate_pct = sum(self._episode_actions) / len(self._episode_actions) * 100
+            trace_event(
+                "EPISODE_END",
+                mode=self.mode,
+                episode=self._episode_counter,
+                turns=len(self._current_episode),
+                avg_reward=avg_reward,
+                retrieval_rate_pct=ret_rate_pct,
+            )
             logger.info(
-                "[env] episode done | turns=%d avg_reward=%.3f",
-                len(self._current_episode),
-                avg_reward,
+                "[env] episode done | turns=%d avg_reward=%.3f retrieval_rate=%.0f%%",
+                len(self._current_episode), avg_reward, ret_rate_pct,
             )
             # Terminal obs: SB3 doesn't use it for training; avoid a wasted
             # encoder forward-pass by returning a zero vector instead.
