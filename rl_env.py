@@ -127,7 +127,7 @@ class RAGDecisionEnv(gym.Env):
             "summary": self._summary,
             "retrieved_docs": [],
             "answer": "",
-            "mode": "baseline",
+            "mode": "rl",
         }
         run_config = build_run_config(self._thread_id)
         run_config["configurable"]["forced_action"] = _action  # per-invocation, not persisted in state
@@ -177,8 +177,11 @@ class RAGDecisionEnv(gym.Env):
                 len(self._current_episode),
                 avg_reward,
             )
-
-        obs = self._build_obs()
+            # Terminal obs: SB3 doesn't use it for training; avoid a wasted
+            # encoder forward-pass by returning a zero vector instead.
+            obs = np.zeros(self.observation_space.shape, dtype=np.float32)
+        else:
+            obs = self._build_obs()
         info: dict[str, Any] = {
             "turn": self._turn_idx,
             "action": action,

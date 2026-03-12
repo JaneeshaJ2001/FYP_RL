@@ -138,7 +138,7 @@ def train(
         policy=TransformerHeadPolicy,
         env=train_env,
         learning_rate=1e-3,          # high LR — only head is trained
-        n_steps=256,                 # rollout buffer size per env
+        n_steps=256,                 # rollout buffer size per env; must satisfy n_steps % batch_size == 0
         batch_size=64,
         n_epochs=10,
         gamma=0.95,
@@ -238,10 +238,9 @@ def evaluate(
                 "summary": summary,
                 "retrieved_docs": [],
                 "answer": "",
-                "action": action,
                 "mode": "baseline",
-                "forced_action": action,
             }
+            run_config["configurable"]["forced_action"] = action  # per-turn, not persisted in state
 
             final_state: dict = {}
             for event in app.stream(input_state, config=run_config):
