@@ -118,7 +118,7 @@ class TransformerHeadPolicy(ActorCriticPolicy):
             device=self.device,
         )
 
-        encoder_dim = CONFIG.policy_encoder_dim
+        encoder_dim = self.features_dim   # == observation_space.shape[0], always in sync
         n_actions = self.action_space.n  # type: ignore[attr-defined]
 
         # ── Shared MLP trunk ─────────────────────────────────────────────────
