@@ -94,9 +94,32 @@ class TransformerHeadPolicy(ActorCriticPolicy):
             *args,
             **kwargs,
         )
+        # NOTE: mlp_trunk / action_head / value_head are created in
+        # _build_mlp_extractor(), which SB3 calls inside _build() *before*
+        # the optimizer is constructed from self.parameters().  Placing them
+        # here (after super().__init__) would mean they are absent from the
+        # optimizer because the optimizer is already built by the time
+        # super().__init__() returns.
+
+    # ── SB3 hooks ─────────────────────────────────────────────────────────────
+
+    def _build_mlp_extractor(self) -> None:
+        """Build all trainable layers here so they exist BEFORE SB3's _build()
+        creates the optimizer from self.parameters().
+
+        A dummy mlp_extractor with empty arch is created so that SB3's internal
+        helpers (e.g. set_training_mode) can access the attribute without error.
+        """
+        from stable_baselines3.common.torch_layers import MlpExtractor
+        self.mlp_extractor = MlpExtractor(
+            self.features_dim,
+            net_arch=[],
+            activation_fn=nn.ReLU,
+            device=self.device,
+        )
 
         encoder_dim = CONFIG.policy_encoder_dim
-        n_actions = action_space.n  # type: ignore[attr-defined]
+        n_actions = self.action_space.n  # type: ignore[attr-defined]
 
         # ── Shared MLP trunk ─────────────────────────────────────────────────
         self.mlp_trunk = nn.Sequential(
@@ -117,23 +140,6 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         logger.info(
             "TransformerHeadPolicy: %d trainable parameters (MLP heads only)",
             trainable,
-        )
-
-    # ── SB3 hooks ─────────────────────────────────────────────────────────────
-
-    def _build_mlp_extractor(self) -> None:
-        """Override to prevent SB3 from building its own MLP.
-        A dummy mlp_extractor with empty arch is still created so that SB3's
-        internal helpers (e.g. set_training_mode) can access the attribute.
-        Our trunk is built in __init__ and used by the overridden forward/
-        evaluate_actions/predict_values methods instead.
-        """
-        from stable_baselines3.common.torch_layers import MlpExtractor
-        self.mlp_extractor = MlpExtractor(
-            self.features_dim,
-            net_arch=[],
-            activation_fn=nn.ReLU,
-            device=self.device,
         )
 
     def forward(
