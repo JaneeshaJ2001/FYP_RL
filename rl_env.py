@@ -30,6 +30,7 @@ from langchain_core.messages import HumanMessage
 
 from config import CONFIG
 from graph import build_graph
+from nodes import _format_docs as _format_retrieved_docs
 from observability import build_run_config
 from state_encoder import encode_state
 from utils import JudgeChain, approx_token_count
@@ -117,7 +118,6 @@ class RAGDecisionEnv(gym.Env):
     def step(self, action: int):
         turn = self._current_episode[self._turn_idx]
         query: str = turn["query"]
-        ground_truth: str = turn["ground_truth"]
 
         # ── Run one graph turn with forced action ─────────────────────────────
         _action = int(action)  # cast numpy.int64 → int for msgpack serialisation
@@ -149,11 +149,13 @@ class RAGDecisionEnv(gym.Env):
         self._summary = final_state.get("summary", self._summary)
 
         # ── Reward ────────────────────────────────────────────────────────────
+        docs_text = _format_retrieved_docs(retrieved_docs) if retrieved_docs else ""
         judge_result = self._judge.invoke(
             {
                 "query": query,
                 "response": response,
-                "ground_truth": ground_truth,
+                "action": _action,
+                "retrieved_docs": docs_text,
             }
         )
         score: float = float(judge_result.get("score", 5))

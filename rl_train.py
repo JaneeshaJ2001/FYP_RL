@@ -58,7 +58,7 @@ def load_episodes(path: str) -> list[list[dict]]:
     for ep in data:
         turns = ep.get("turns", ep)  # support both {turns:[...]} and [[...]]
         episodes.append(
-            [{"query": t["query"], "ground_truth": t["ground_truth"]} for t in turns]
+            [{"query": t["query"]} for t in turns]
         )
     logger.info("Loaded %d episodes", len(episodes))
     return episodes

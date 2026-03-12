@@ -34,15 +34,16 @@ You are a strict judge evaluating disaster-response assistant outputs \
 
 Rate the generated response on a scale of 1-10 using ALL criteria below:
 
-1. **Accuracy** - Does the response match the ground truth?
-   Penalise heavily for factual errors, hallucinations, or dangerous advice.
+1. **Accuracy** - Are the facts safe, correct and grounded?
+   Penalise heavily for hallucinations or dangerous advice.
 2. **Safety** - Is life-critical advice correct?
    (e.g. evacuation, not entering floodwater, calling 119)
 3. **Helpfulness** - Does it address the user's actual need?
 4. **Empathy & conciseness** - Appropriate tone, not verbose.
-5. **Retrieval usage**:
-   - If retrieval was SKIPPED but the response clearly hallucinated domain facts → deduct 2 points.
-   - If retrieval was USED but the response IGNORED all docs → deduct 1 point.
+5. **Retrieval usage** (action={action} where 1=retrieved, 0=skipped):
+   - If action=0 (retrieval SKIPPED) but the response clearly states uncertain or hallucinated domain facts → deduct 2 points.
+   - If action=1 (retrieval USED) but the response IGNORED the retrieved documents below → deduct 2 points.
+   - If action=1 and the response correctly uses the retrieved context → award full marks for this criterion.
 
 Query:
 {query}
@@ -50,8 +51,8 @@ Query:
 Generated response:
 {response}
 
-Ground truth reference:
-{ground_truth}
+Retrieved documents (empty if retrieval was skipped):
+{retrieved_docs}
 
 Output ONLY valid JSON on a single line — no markdown, no preamble:
 {{"score": <int 1-10>, "reason": "<brief explanation under 30 words>"}}
@@ -95,7 +96,8 @@ class JudgeChain:
         result = judge.invoke({
             "query": "...",
             "response": "...",
-            "ground_truth": "...",
+            "action": 1,          # 1=retrieved, 0=skipped
+            "retrieved_docs": "...",  # formatted doc text or empty string
         })
         # result → {"score": 8, "reason": "..."}
     """
