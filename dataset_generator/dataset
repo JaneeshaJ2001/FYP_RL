@@ -1,0 +1,40 @@
+# SOP Chunk Dataset Generator
+### Step 1 of the RL Disaster-Response Dataset Pipeline
+
+## Quick Start
+
+```bash
+pip install openai
+export OPENAI_API_KEY="sk-..."
+python generate_sop_chunks.py
+```
+
+Output: **`sop_chunks.json`** — the knowledge base ready for conversation generation.
+
+---
+
+## Model Options (top of script)
+
+| Model | Quality | Est. cost for 300 chunks |
+|-------|---------|--------------------------|
+| `gpt-4o` | Best | ~$1.50–2.00 |
+| `gpt-4o-mini` | Good, faster | ~$0.10–0.15 |
+
+---
+
+## What It Does
+
+- 10 API calls × 30 chunks each = 300 total chunks
+- Round-robin across 10 disaster topics (30 per topic)
+- 14 realistic official sources rotated across chunks
+- OpenAI `response_format: json_object` enforces clean JSON output
+- Validates fields, deduplicates chunk IDs, builds metadata
+
+## Topics (30 chunks each)
+flood and landslide preparedness · monitoring, response · evacuation · rescue · recovery · medical emergency response ·
+general disaster preparedness · emergency contact information
+
+
+## Next Steps
+- **Step 2:** Conversation episode generator — uses chunk IDs to produce 10k–20k multi-turn episodes with `retrieval_required` labels
+- **Step 3:** PPO training on episodes + this knowledge base
