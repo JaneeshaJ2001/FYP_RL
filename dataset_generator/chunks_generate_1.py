@@ -26,19 +26,19 @@ MODEL           = "gpt-4o-mini"    # or "gpt-4o-mini" for lower cost
 MAX_TOKENS      = 8000
 
 TOPICS = [
-    "Flood preparedness",
-    "Flood monitoring",
-    "Flood safety",
-    "Flood evacuation",
-    "Flood Rescue Operations",
-    "Post Flood Recovery",
-    "Landslide risk assessment",
-    "Landslide warning signs",
-    "Landslide prevention",
-    "Landslide Emergency Response",
-    "Landslide Rescue Operations",
-    "Post-Landslide Recovery",
-    "Emergency communication",
+    "flood preparedness",
+    "flood monitoring",
+    "flood safety",
+    "flood evacuation",
+    "flood rescue operations",
+    "post flood recovery",
+    "landslide risk assessment",
+    "landslide warning signs",
+    "landslide prevention",
+    "landslide emergency response",
+    "landslide rescue operations",
+    "post landslide recovery",
+    "emergency communication",
     "general disaster preparedness",
     "emergency shelter",
     "medical emergency",
@@ -81,8 +81,10 @@ def build_prompt(batch_topics: list[dict]) -> str:
 
 ## TASK
 Generate exactly {n} high-quality synthetic SOP (Standard Operating Procedure) chunks for a \
-disaster-response knowledge base. These chunks will later be used as the retrieval corpus for \
-training a retrieval policy in a multi-turn conversational RL system.
+disaster-response knowledge base used by an AI emergency-assistance chatbot. These chunks will serve as the retrieval corpus for a multi-turn conversational AI system assisting people during floods and landslides.
+
+The chatbot will mainly interact with affected civilians, so the procedures must include clear, practical instructions \
+people can follow during emergencies, while still reflecting professional disaster-management protocols used by authorities and responders.
 
 ## STRICT REQUIREMENTS
 1. Return ONLY valid JSON — no markdown fences, no explanations, no extra text.
@@ -94,11 +96,24 @@ training a retrieval policy in a multi-turn conversational RL system.
      "source":   "..."
    }}
 3. Text length: 150–400 words per chunk. Be precise and detailed — this is real SOP content.
-4. Every chunk must be unique, self-contained, and internally consistent.
-5. Content must sound like authentic, professionally written emergency-management SOPs:
-   - Reference realistic thresholds, timelines, equipment, and protocols
-   - Include actionable directives, not vague advice
-6. Use the exact chunk_ids, topics, and sources specified below.
+4. Each chunk must sound like authentic emergency-management SOP documentation used by disaster response agencies.
+- Include: specific actions, practical procedures, safety guidance, operational details Where appropriate, \
+reference realistic elements such as: evacuation timing, water levels or rainfall thresholds, \
+safe distances, required equipment, coordination with authorities, shelter management procedures, communication protocols.
+5. Although these are SOP chunks, they must contain instructions that can guide civilians during disasters, such as:
+- how to evacuate safely
+- how to identify warning signs
+- what to do in shelters
+- how to communicate with emergency responders
+- how to avoid common hazards
+- how to protect children, elderly people, and disabled individuals
+- what to do after the disaster
+Avoid purely administrative procedures that civilians cannot act on.
+6. Each chunk must be: self-contained, internally consistent, focused on a single topic, usable as a stand-alone retrieval unit.
+7. Ensure chunks vary across: preparedness actions, warning signs, evacuation procedures, rescue guidance, shelter safety\
+medical response, recovery steps.
+Do not repeat the same instructions in multiple chunks.
+8. Use the exact chunk_ids, topics, and sources specified below.
 
 ## BATCH SPECIFICATION
 {topic_lines}
