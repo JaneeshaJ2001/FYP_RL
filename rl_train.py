@@ -6,13 +6,13 @@ Train and evaluate the retrieval-decision policy with PPO.
 Usage
 ─────
   # Full training run:
-  python rl_train.py --episodes conversations.json --timesteps 20000
+    python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --timesteps 20000
 
   # Quick smoke-test (fewer steps):
-  python rl_train.py --episodes conversations.json --timesteps 500 --eval-only
+    python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --timesteps 500 --eval-only
 
   # Eval only (load saved policy):
-  python rl_train.py --episodes conversations.json --eval-only
+    python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --eval-only
 """
 
 from __future__ import annotations
@@ -39,43 +39,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger("rl_train")
 
+REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_EPISODES_PATH = REPO_ROOT / "dataset_generator" / "dialog_dataset" / "conversations.json"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Data loading
 # ──────────────────────────────────────────────────────────────────────────────
 
+def resolve_episodes_path(path: str | Path) -> Path:
+    requested_path = Path(path)
+    candidates: list[Path] = []
+
+    if requested_path.is_absolute():
+        candidates.append(requested_path)
+    else:
+        candidates.extend([
+            Path.cwd() / requested_path,
+            REPO_ROOT / requested_path,
+        ])
+        if requested_path.name == "conversations.json":
+            candidates.append(DEFAULT_EPISODES_PATH)
+
+    for candidate in dict.fromkeys(candidates):
+        if candidate.exists():
+            return candidate
+
+    searched_paths = ", ".join(str(candidate) for candidate in dict.fromkeys(candidates))
+    raise FileNotFoundError(
+        f"Could not find episodes file '{path}'. Tried: {searched_paths}"
+    )
+
+
 def load_episodes(path: str) -> list[list[dict]]:
     """
-    Load conversations JSON.
-    Supports both:
-      1) legacy list format: [{"turns": [...]}, ...] or [[...], ...]
-      2) wrapped format: {"conversations": [...], "metadata": {...}}
-    Returns: list of turn lists  [[{query, ground_truth}, ...], ...]
+    Load the dialog dataset generated in dataset_generator/dialog_dataset.
+
+    Expected shape:
+      {
+        "conversations": [
+          {
+            "episode_id": "conv_001",
+            "turns": [
+              {
+                "query": "...",
+                "assistant_answer": "...",
+                ...
+              }
+            ]
+          }
+        ]
+      }
+
+    Returns: list of turn lists, where each turn preserves the original
+    metadata and adds ground_truth=assistant_answer for downstream RL code.
     """
-    with open(path, "r", encoding="utf-8") as f:
+    resolved_path = resolve_episodes_path(path)
+    logger.info("Loading episodes from %s", resolved_path)
+
+    with open(resolved_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    if isinstance(data, dict):
-        if "conversations" in data:
-            raw_episodes = data["conversations"]
-        elif "episodes" in data:
-            raw_episodes = data["episodes"]
-        else:
-            raise ValueError(
-                "Unsupported conversations JSON format. "
-                "Expected top-level key 'conversations' or 'episodes'."
-            )
-    elif isinstance(data, list):
-        raw_episodes = data
-    else:
-        raise ValueError("Unsupported conversations JSON format: expected list or dict")
+    if not isinstance(data, dict) or not isinstance(data.get("conversations"), list):
+        raise ValueError(
+            "Unsupported conversations JSON format. Expected a top-level object "
+            "with a 'conversations' list."
+        )
+
+    raw_episodes = data["conversations"]
 
     episodes: list[list[dict]] = []
+    skipped_episodes = 0
     skipped_turns = 0
+    total_turns = 0
     for ep in raw_episodes:
-        turns = ep.get("turns", ep) if isinstance(ep, dict) else ep
+        if not isinstance(ep, dict):
+            skipped_episodes += 1
+            logger.warning("Skipping malformed episode that is not an object")
+            continue
+
+        turns = ep.get("turns")
         if not isinstance(turns, list):
             logger.warning("Skipping malformed episode with non-list turns")
+            skipped_episodes += 1
             continue
 
         parsed_turns: list[dict] = []
@@ -84,23 +130,29 @@ def load_episodes(path: str) -> list[list[dict]]:
                 skipped_turns += 1
                 continue
 
-            query = t.get("query", t.get("user_query", ""))
-            ground_truth = t.get(
-                "ground_truth", t.get("assistant_answer", t.get("response", ""))
-            )
-            parsed_turns.append(
-                {
-                    "query": str(query) if query is not None else "",
-                    "ground_truth": str(ground_truth) if ground_truth is not None else "",
-                }
-            )
+            query = t.get("query")
+            assistant_answer = t.get("assistant_answer")
+
+            if query is None or assistant_answer is None:
+                skipped_turns += 1
+                continue
+
+            parsed_turn = dict(t)
+            parsed_turn["query"] = str(query)
+            parsed_turn["ground_truth"] = str(assistant_answer)
+            parsed_turns.append(parsed_turn)
 
         if parsed_turns:
             episodes.append(parsed_turns)
+            total_turns += len(parsed_turns)
+        else:
+            skipped_episodes += 1
 
+    if skipped_episodes:
+        logger.warning("Skipped %d malformed episodes while loading episodes", skipped_episodes)
     if skipped_turns:
         logger.warning("Skipped %d malformed turns while loading episodes", skipped_turns)
-    logger.info("Loaded %d episodes", len(episodes))
+    logger.info("Loaded %d episodes (%d turns)", len(episodes), total_turns)
     return episodes
 
 
@@ -391,7 +443,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Train retrieval-decision policy with PPO")
     p.add_argument(
         "--episodes",
-        default="conversations.json",
+        default="dataset_generator/dialog_dataset/conversations.json",
         help="Path to conversations JSON file",
     )
     p.add_argument(

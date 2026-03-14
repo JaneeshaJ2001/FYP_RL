@@ -95,13 +95,13 @@ python main.py --ingest --json chunks.json
 
 ```bash
 # Full training (20 000 steps default)
-python rl_train.py --episodes conversations.json --timesteps 20000
+python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --timesteps 20000
 
 # Quick smoke-test
-python rl_train.py --episodes conversations.json --timesteps 500
+python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --timesteps 500
 
 # Evaluation only (requires saved policy)
-python rl_train.py --episodes conversations.json --eval-only \
+python rl_train.py --episodes dataset_generator/dialog_dataset/conversations.json --eval-only \
     --policy-path policy_checkpoints/best_model.zip
 ```
 
