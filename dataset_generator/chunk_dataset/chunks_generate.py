@@ -5,23 +5,25 @@ Generates 300 synthetic SOP chunks for RL retrieval-augmented disaster-response 
 Usage:
     pip install openai
     export OPENAI_API_KEY="your-api-key-here"
-    python chunks_generate.py.py
+    python chunk_dataset/chunks_generate.py
 
 Output:
-    sop_chunks.json  — the full knowledge base ready for conversation generation
+    chunk_dataset/sop_chunks.json  — the full knowledge base ready for conversation generation
 """
 
 import os
 import json
 import time
 import math
+from pathlib import Path
 from openai import OpenAI
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 TOTAL_CHUNKS    = 300
 CHUNKS_PER_CALL = 30          # chunks requested per API call  (10 calls total)
-OUTPUT_FILE     = "sop_chunks.json"
+BASE_DIR        = Path(__file__).resolve().parent
+OUTPUT_FILE     = BASE_DIR / "sop_chunks.json"
 MODEL           = "gpt-4o-mini"    # or "gpt-4o-mini" for lower cost
 MAX_TOKENS      = 8000
 

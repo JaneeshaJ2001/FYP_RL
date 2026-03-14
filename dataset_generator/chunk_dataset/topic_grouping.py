@@ -3,8 +3,9 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
-INPUT_PATH = "sop_chunks.json"
-OUTPUT_PATH = "chunks_grouped.json"
+BASE_DIR = Path(__file__).resolve().parent
+INPUT_PATH = BASE_DIR / "sop_chunks.json"
+OUTPUT_PATH = BASE_DIR / "chunks_grouped.json"
 
 
 TOPIC_MAP = {
@@ -122,7 +123,7 @@ def main():
 
     if isinstance(data, dict):
         # Support wrapped payloads like {"sop_chunks": [...]}.
-        for key in ("sop_chunks"):
+        for key in ("sop_chunks",):
             candidate = data.get(key)
             if isinstance(candidate, list):
                 data = candidate

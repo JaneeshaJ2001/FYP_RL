@@ -20,7 +20,7 @@ Usage
 ─────
     pip install openai
     export OPENAI_API_KEY="sk-..."
-    python generate_conversations_3.py
+    python dialog_dataset/generate_conversations.py
 """
 
 import os
@@ -28,6 +28,7 @@ import json
 import time
 import random
 from collections import defaultdict
+from pathlib import Path
 from openai import OpenAI
 
 from conversation_prompts import (
@@ -40,8 +41,9 @@ from conversation_prompts import (
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-INPUT_FILE     = "chunks_grouped.json"
-OUTPUT_FILE    = "conversations.json"
+BASE_DIR       = Path(__file__).resolve().parent
+INPUT_FILE     = BASE_DIR.parent / "chunk_dataset" / "chunks_grouped.json"
+OUTPUT_FILE    = BASE_DIR / "conversations.json"
 MODEL          = "gpt-4o-mini"
 MAX_TOKENS     = 3500
 TOTAL_EPISODES = 500

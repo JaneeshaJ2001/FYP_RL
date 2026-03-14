@@ -7,41 +7,41 @@ This dataset pipeline runs in 3 scripts and should be executed in this order.
 Run:
 
 ```bash
-python chunks_generate_1.py
+python chunk_dataset/chunks_generate.py
 ```
 
 Result:
 
-- `sop_chunks.json`
+- `chunk_dataset/sop_chunks.json`
 
 ## 2) Group Topics and Add Labels
 
 Run:
 
 ```bash
-python topic_grouping_2.py
+python chunk_dataset/topic_grouping.py
 ```
 
 Result:
 
-- `chunks_grouped.json`
+- `chunk_dataset/chunks_grouped.json`
 
 ## 3) Generate Multi-Turn Conversations
 
 Run:
 
 ```bash
-python generate_conversations_3.py
+python dialog_dataset/generate_conversations.py
 ```
 
 Result:
 
-- `conversations.json`
+- `dialog_dataset/conversations.json`
 
 ## Quick Sequence
 
 ```bash
-python chunks_generate_1.py
-python topic_grouping_2.py
-python generate_conversations_3.py
+python chunk_dataset/chunks_generate.py
+python chunk_dataset/topic_grouping.py
+python dialog_dataset/generate_conversations.py
 ```
