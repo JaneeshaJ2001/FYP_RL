@@ -28247,5 +28247,54 @@
         }
       ]
     }
-  ]
+  ],
+  "metadata": {
+    "total_episodes": 399,
+    "total_turns": 2354,
+    "avg_turns_per_episode": 5.9,
+    "retrieval_required_rate": 0.584,
+    "scenario_distribution": {
+      "G": 40,
+      "I": 30,
+      "H": 30,
+      "B": 50,
+      "A": 50,
+      "F": 40,
+      "C": 50,
+      "D": 40,
+      "E": 40,
+      "J": 30
+    },
+    "topic_distribution": {
+      "landslide+flood / multi_topic": 19,
+      "flood / safety_response": 19,
+      "flood+landslide / multi_topic": 20,
+      "flood / preparedness": 19,
+      "multi_hazard+flood / multi_topic": 18,
+      "landslide / preparedness": 19,
+      "landslide+multi_hazard / multi_topic": 23,
+      "multi_hazard / communication_coordination": 16,
+      "flood / evacuation": 16,
+      "multi_hazard / medical_response": 27,
+      "multi_hazard+landslide / multi_topic": 16,
+      "landslide / rescue_operations": 21,
+      "multi_hazard / shelter_management": 27,
+      "flood+multi_hazard / multi_topic": 14,
+      "landslide / monitoring_warning": 24,
+      "landslide / recovery": 20,
+      "flood / rescue_operations": 23,
+      "flood / monitoring_warning": 17,
+      "multi_hazard / preparedness": 15,
+      "landslide / safety_response": 12,
+      "flood / recovery": 14
+    },
+    "query_type_distribution": {
+      "first_turn": 429,
+      "topic_shift": 370,
+      "followup": 839,
+      "OOD": 110,
+      "clarification": 397,
+      "unanswerable": 209
+    }
+  }
 }
