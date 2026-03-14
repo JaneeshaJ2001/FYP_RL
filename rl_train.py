@@ -46,19 +46,60 @@ logger = logging.getLogger("rl_train")
 
 def load_episodes(path: str) -> list[list[dict]]:
     """
-    Load conversations.json.
-    Expected format: list of episode objects, each with a "turns" key.
+    Load conversations JSON.
+    Supports both:
+      1) legacy list format: [{"turns": [...]}, ...] or [[...], ...]
+      2) wrapped format: {"conversations": [...], "metadata": {...}}
     Returns: list of turn lists  [[{query, ground_truth}, ...], ...]
     """
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    if isinstance(data, dict):
+        if "conversations" in data:
+            raw_episodes = data["conversations"]
+        elif "episodes" in data:
+            raw_episodes = data["episodes"]
+        else:
+            raise ValueError(
+                "Unsupported conversations JSON format. "
+                "Expected top-level key 'conversations' or 'episodes'."
+            )
+    elif isinstance(data, list):
+        raw_episodes = data
+    else:
+        raise ValueError("Unsupported conversations JSON format: expected list or dict")
+
     episodes: list[list[dict]] = []
-    for ep in data:
-        turns = ep.get("turns", ep)  # support both {turns:[...]} and [[...]]
-        episodes.append(
-            [{"query": t["query"]} for t in turns]
-        )
+    skipped_turns = 0
+    for ep in raw_episodes:
+        turns = ep.get("turns", ep) if isinstance(ep, dict) else ep
+        if not isinstance(turns, list):
+            logger.warning("Skipping malformed episode with non-list turns")
+            continue
+
+        parsed_turns: list[dict] = []
+        for t in turns:
+            if not isinstance(t, dict):
+                skipped_turns += 1
+                continue
+
+            query = t.get("query", t.get("user_query", ""))
+            ground_truth = t.get(
+                "ground_truth", t.get("assistant_answer", t.get("response", ""))
+            )
+            parsed_turns.append(
+                {
+                    "query": str(query) if query is not None else "",
+                    "ground_truth": str(ground_truth) if ground_truth is not None else "",
+                }
+            )
+
+        if parsed_turns:
+            episodes.append(parsed_turns)
+
+    if skipped_turns:
+        logger.warning("Skipped %d malformed turns while loading episodes", skipped_turns)
     logger.info("Loaded %d episodes", len(episodes))
     return episodes
 
