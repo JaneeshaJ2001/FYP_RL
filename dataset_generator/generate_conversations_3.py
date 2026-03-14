@@ -1,19 +1,20 @@
 """
-Multi-Turn Disaster Dialogue Generator  (two-step pipeline)
-================================================================
+Multi-Turn Disaster Dialogue Generator 
+====================================================================
 Generates conversation episodes grounded in chunks_grouped.json.
 Supports 10 scenario templates (A–J).
 
-Pipeline per episode
+Single-pass pipeline
 ────────────────────
-  Step 1 — generate_conversation:  raw turns (no retrieval labels)
-  Step 2 — label_turns:            assign retrieval_required + relevant_chunks
+One API call per episode: the model generates the conversation AND annotates
+every turn (retrieval_required, relevant_chunks, query_type) together.
 
 Scope
 ─────
 • Floods and landslides ONLY.
-• Single-hazard episodes (Scenario H is the sole cross-hazard comparison).
-• OOD turns = unsupported disaster type OR unsupported local scope.
+• Single-hazard episodes; Scenario H is the sole cross-hazard comparison.
+• OOD = unsupported disaster type OR unsupported local scope.
+  NO unrelated non-disaster topics.
 
 Usage
 ─────
@@ -31,10 +32,9 @@ from openai import OpenAI
 
 from conversation_prompts import (
     DATASET_SYSTEM_PROMPT,
-    LABELER_SYSTEM_PROMPT,
-    build_generation_prompt,
-    build_labeling_prompt,
-    merge_labels,
+    VALID_QUERY_TYPES,
+    RETRIEVAL_FALSE_TYPES,
+    build_prompt,
     get_scenario_template,
 )
 
@@ -42,51 +42,27 @@ from conversation_prompts import (
 
 INPUT_FILE     = "chunks_grouped.json"
 OUTPUT_FILE    = "conversations.json"
-MODEL          = "gpt-4o-mini"        # or "gpt-4o"
-MAX_TOKENS_GEN = 3500                 # generation step
-MAX_TOKENS_LBL = 1500                 # labeling step (much shorter output)
-TOTAL_EPISODES = 10
-CHUNKS_PER_EP  = 3                    # chunks sampled per single-hazard episode
-SLEEP_BETWEEN  = 0.5                  # seconds between API calls
-
+MODEL          = "gpt-4o-mini"
+MAX_TOKENS     = 3500
+TOTAL_EPISODES = 500
+CHUNKS_PER_EP  = 4          # chunks sampled per single-hazard episode
+SLEEP_BETWEEN  = 0.5        # seconds between API calls
+ 
 # ── Scenario distribution (must sum to TOTAL_EPISODES) ────────────────────────
-#
-#   A  Follow-up Conversation             6 turns
-#   B  Information Seeking                5 turns
-#   C  Emergency Dialogue                 6 turns
-#   D  Subtopic Shift Within Hazard       6 turns
-#   E  Ambiguous / Non-standalone         6 turns
-#   F  Unanswerable / Partial Answer      6 turns
-#   G  Lifecycle Progression              7 turns
-#   H  Comparative (flood vs landslide)   6 turns
-#   I  Unsupported Scope / OOD            6 turns
-#   J  Misconception / Correction         5 turns
-
-# SCENARIO_DIST = {
-#     "A": 60,
-#     "B": 60,
-#     "C": 60,
-#     "D": 50,
-#     "E": 50,
-#     "F": 50,
-#     "G": 50,
-#     "H": 40,
-#     "I": 40,
-#     "J": 40,
-# }
 SCENARIO_DIST = {
-    "A": 1,
-    "B": 1,
-    "C": 1,
-    "D": 1,
-    "E": 1,
-    "F": 1,
-    "G": 1,
-    "H": 1,
-    "I": 1,
-    "J": 1,
+    "A": 60,   # Follow-up Conversation             6 turns
+    "B": 60,   # Information Seeking                5 turns
+    "C": 60,   # Emergency Dialogue                 6 turns
+    "D": 50,   # Subtopic Shift Within Hazard        6 turns
+    "E": 50,   # Ambiguous / Non-standalone          6 turns
+    "F": 50,   # Unanswerable / Partial Answer       6 turns
+    "G": 50,   # Lifecycle Progression               6 turns
+    "H": 40,   # Comparative: Flood vs Landslide     6 turns
+    "I": 40,   # Unsupported Scope / OOD             6 turns
+    "J": 40,   # Misconception / Correction          5 turns
 }
 # Total = 500
+
 
 # ── Load & index chunks ────────────────────────────────────────────────────────
 
@@ -105,13 +81,12 @@ def load_chunks(path: str):
                 break
         if chunks is None:
             raise ValueError(
-                "Expected chunk input JSON to be a list or an object containing "
-                "a list under 'sop_chunks'."
+                "Expected chunk input to be a list or an object "
+                "containing a list under 'sop_chunks'."
             )
     else:
-        raise ValueError("Expected chunk input JSON to be a list or object.")
+        raise ValueError("Expected chunk input to be a list or object.")
 
-    # Index by (hazard_type, topic_group) and by hazard_type alone
     index        = defaultdict(list)   # (hazard, group) → chunks
     hazard_index = defaultdict(list)   # hazard → chunks
 
@@ -133,18 +108,12 @@ def sample_chunks_for_episode(
     keys: list,
 ) -> tuple[list[dict], str, str]:
     """
-    Sample chunks for an episode.
-
-    Scenario H (Comparative) uses chunks from BOTH flood and landslide.
+    Scenario H uses chunks from both flood AND landslide.
     All other scenarios use a single hazard topic group.
-
-    Returns (selected_chunks, hazard_label, group_label).
     """
     if scenario == "H":
-        # Cross-hazard comparison — intentionally uses both supported hazards
-        flood_chunks      = hazard_index.get("flood", [])
-        landslide_chunks  = hazard_index.get("landslide", [])
-        # Fallback: pick two different hazards if exact names differ
+        flood_chunks     = hazard_index.get("flood", [])
+        landslide_chunks = hazard_index.get("landslide", [])
         if not flood_chunks or not landslide_chunks:
             available = [h for h in hazard_index if hazard_index[h]]
             if len(available) >= 2:
@@ -163,7 +132,6 @@ def sample_chunks_for_episode(
         )
         return selected, hazard_label, "cross_hazard_comparison"
 
-    # All other scenarios: single hazard, single topic group
     key = random.choice(keys)
     pool = index[key]
     selected = random.sample(pool, min(CHUNKS_PER_EP, len(pool)))
@@ -197,53 +165,87 @@ def plan_episodes(index: dict, hazard_index: dict, total: int) -> list:
     return episodes
 
 
-# ── API helpers ────────────────────────────────────────────────────────────────
+# ── API call ───────────────────────────────────────────────────────────────────
 
-def call_gpt(client: OpenAI, prompt: str, system: str, max_tokens: int) -> dict:
+def call_gpt(client: OpenAI, prompt: str) -> dict:
     r = client.chat.completions.create(
         model=MODEL,
-        max_tokens=max_tokens,
+        max_tokens=MAX_TOKENS,
         response_format={"type": "json_object"},
         messages=[
-            {"role": "system", "content": system},
+            {"role": "system", "content": DATASET_SYSTEM_PROMPT},
             {"role": "user",   "content": prompt},
         ],
     )
     return json.loads(r.choices[0].message.content.strip())
 
 
-# ── Validators ─────────────────────────────────────────────────────────────────
+# ── Validator ──────────────────────────────────────────────────────────────────
 
-VALID_QT       = {"first_turn", "followup", "topic_shift", "clarification", "OOD", "unanswerable"}
-TURN_FIELDS_GEN = {"turn_id", "query", "assistant_answer", "topic", "query_type"}
-TURN_FIELDS_LBL = {"turn_id", "retrieval_required", "relevant_chunks"}
+REQUIRED_TURN_FIELDS = {
+    "turn_id", "query", "assistant_answer", "relevant_chunks", "retrieval_required", "query_type",
+}
 
 
-def validate_generation(ep: dict, expected_turns: int) -> tuple[bool, str]:
+def validate_episode(ep: dict, expected_turns: int) -> tuple[bool, str]:
     turns = ep.get("turns", [])
     if len(turns) != expected_turns:
         return False, f"expected {expected_turns} turns, got {len(turns)}"
+
+    seen_chunk_ids: set[str] = set()   # tracks all chunks retrieved so far
+
     for t in turns:
-        missing = TURN_FIELDS_GEN - t.keys()
-        if missing:
-            return False, f"turn {t.get('turn_id', '?')} missing fields: {missing}"
-        if t["query_type"] not in VALID_QT:
-            return False, f"bad query_type '{t['query_type']}' in turn {t.get('turn_id', '?')}"
-    return True, "ok"
+        tid = t.get("turn_id", "?")
 
-
-def validate_labels(labels_resp: dict, expected_turns: int) -> tuple[bool, str]:
-    labels = labels_resp.get("labels", [])
-    if len(labels) != expected_turns:
-        return False, f"expected {expected_turns} label entries, got {len(labels)}"
-    for lb in labels:
-        missing = TURN_FIELDS_LBL - lb.keys()
+        # Required fields present
+        missing = REQUIRED_TURN_FIELDS - t.keys()
         if missing:
-            return False, f"label turn {lb.get('turn_id', '?')} missing: {missing}"
-        if not isinstance(lb["retrieval_required"], bool):
-            return False, f"retrieval_required not bool in turn {lb.get('turn_id', '?')}"
-        if not isinstance(lb["relevant_chunks"], list):
-            return False, f"relevant_chunks not list in turn {lb.get('turn_id', '?')}"
+            return False, f"turn {tid} missing fields: {missing}"
+
+        # query_type valid
+        qt = t["query_type"]
+        if qt not in VALID_QUERY_TYPES:
+            return False, f"turn {tid} bad query_type '{qt}'"
+
+        # Types
+        if not isinstance(t["retrieval_required"], bool):
+            return False, f"turn {tid} retrieval_required is not bool"
+        if not isinstance(t["relevant_chunks"], list):
+            return False, f"turn {tid} relevant_chunks is not list"
+
+        rr     = t["retrieval_required"]
+        chunks = t["relevant_chunks"]
+
+        # retrieval_required must be false for specific query types
+        if qt in RETRIEVAL_FALSE_TYPES and rr:
+            return False, (
+                f"turn {tid} query_type='{qt}' requires retrieval_required=false"
+            )
+
+        # retrieval_required=true → must cite at least one chunk
+        if rr and len(chunks) == 0:
+            return False, (
+                f"turn {tid} retrieval_required=true but relevant_chunks=[]"
+            )
+
+        # retrieval_required=false → relevant_chunks must be empty
+        if not rr and len(chunks) > 0:
+            return False, (
+                f"turn {tid} retrieval_required=false but relevant_chunks is non-empty"
+            )
+
+        # retrieval_required=true → chunks must not have all been retrieved before
+        if rr:
+            new_chunks = set(chunks) - seen_chunk_ids
+            if not new_chunks:
+                return False, (
+                    f"turn {tid} retrieval_required=true but all cited chunks "
+                    f"were already retrieved in earlier turns"
+                )
+            seen_chunk_ids.update(chunks)
+        # retrieval_required=false with followup_reuse/clarification:
+        # chunks should have been seen before (soft check — warn, don't reject)
+
     return True, "ok"
 
 
@@ -282,7 +284,7 @@ def main():
     if not api_key:
         raise SystemExit("ERROR: OPENAI_API_KEY not set.")
     if not os.path.exists(INPUT_FILE):
-        raise SystemExit(f"ERROR: {INPUT_FILE} not found. Run chunks_generate.py first.")
+        raise SystemExit(f"ERROR: {INPUT_FILE} not found.")
     if sum(SCENARIO_DIST.values()) != TOTAL_EPISODES:
         raise SystemExit(
             f"ERROR: SCENARIO_DIST sums to {sum(SCENARIO_DIST.values())}, "
@@ -302,13 +304,13 @@ def main():
     print(f"Scenario plan ({TOTAL_EPISODES} total episodes):")
     for sc, cnt in SCENARIO_DIST.items():
         tmpl = get_scenario_template(sc)
-        print(f"  {sc}  {tmpl['name']:<40} {cnt:>3} eps × {tmpl['turns']} turns")
+        print(f"  {sc}  {tmpl['name']:<42} {cnt:>3} eps × {tmpl['turns']} turns")
 
     episodes_plan = plan_episodes(index, hazard_index, TOTAL_EPISODES)
-    print(f"\nGenerating (2-step pipeline: generate → label)...\n")
+    print(f"\nGenerating (single-pass: generate + annotate)...\n")
 
     all_episodes = []
-    failed = retried_gen = retried_lbl = 0
+    failed = retried = 0
 
     for i, plan in enumerate(episodes_plan, start=1):
         sc    = plan["scenario"]
@@ -322,16 +324,16 @@ def main():
         )
         print(label, end=" ", flush=True)
 
-        # ── Step 1: generate conversation ──────────────────────────────────────
-        gen_prompt = build_generation_prompt(plan)
+        prompt = build_prompt(plan)
+
         try:
-            ep = call_gpt(client, gen_prompt, DATASET_SYSTEM_PROMPT, MAX_TOKENS_GEN)
+            ep = call_gpt(client, prompt)
         except Exception as e:
-            print(f"✗gen {type(e).__name__}: {e}")
+            print(f"✗ {type(e).__name__}: {e}")
             failed += 1
             continue
 
-        # Inject metadata fields
+        # Inject metadata
         for k, v in [
             ("episode_id",    plan["episode_id"]),
             ("scenario_type", sc),
@@ -342,12 +344,12 @@ def main():
         ]:
             ep.setdefault(k, v)
 
-        ok_gen, reason_gen = validate_generation(ep, n_exp)
-        if not ok_gen:
-            print(f"⚠gen({reason_gen}) retry...", end=" ", flush=True)
-            retried_gen += 1
+        ok, reason = validate_episode(ep, n_exp)
+        if not ok:
+            print(f"⚠ ({reason}) retrying...", end=" ", flush=True)
+            retried += 1
             try:
-                ep = call_gpt(client, gen_prompt, DATASET_SYSTEM_PROMPT, MAX_TOKENS_GEN)
+                ep = call_gpt(client, prompt)
                 for k, v in [
                     ("episode_id",    plan["episode_id"]),
                     ("scenario_type", sc),
@@ -357,48 +359,20 @@ def main():
                     ("topic_group",   plan["topic_group"]),
                 ]:
                     ep.setdefault(k, v)
-                ok_gen, reason_gen = validate_generation(ep, n_exp)
+                ok, reason = validate_episode(ep, n_exp)
             except Exception as e:
-                ok_gen, reason_gen = False, str(e)
+                ok, reason = False, str(e)
 
-        if not ok_gen:
-            print(f"✗gen skipped ({reason_gen})")
+        if ok:
+            all_episodes.append(ep)
+            print("✓")
+        else:
+            print(f"✗ skipped ({reason})")
             failed += 1
-            continue
-
-        # ── Step 2: label turns ────────────────────────────────────────────────
-        lbl_prompt = build_labeling_prompt(ep, plan["selected_chunks"])
-        try:
-            lbl_resp = call_gpt(client, lbl_prompt, LABELER_SYSTEM_PROMPT, MAX_TOKENS_LBL)
-        except Exception as e:
-            print(f"✗lbl {type(e).__name__}: {e}")
-            failed += 1
-            continue
-
-        ok_lbl, reason_lbl = validate_labels(lbl_resp, n_exp)
-        if not ok_lbl:
-            print(f"⚠lbl({reason_lbl}) retry...", end=" ", flush=True)
-            retried_lbl += 1
-            try:
-                lbl_resp = call_gpt(client, lbl_prompt, LABELER_SYSTEM_PROMPT, MAX_TOKENS_LBL)
-                ok_lbl, reason_lbl = validate_labels(lbl_resp, n_exp)
-            except Exception as e:
-                ok_lbl, reason_lbl = False, str(e)
-
-        if not ok_lbl:
-            print(f"✗lbl skipped ({reason_lbl})")
-            failed += 1
-            continue
-
-        # ── Merge and save ─────────────────────────────────────────────────────
-        final_ep = merge_labels(ep, lbl_resp["labels"])
-        all_episodes.append(final_ep)
-        print("✓")
 
         if i < TOTAL_EPISODES:
             time.sleep(SLEEP_BETWEEN)
 
-    # ── Write output ───────────────────────────────────────────────────────────
     output = {
         "conversations": all_episodes,
         "metadata"     : build_metadata(all_episodes),
@@ -410,22 +384,23 @@ def main():
     print(f"\n{'='*64}")
     print(
         f"Done!  saved={meta['total_episodes']}  "
-        f"failed={failed}  "
-        f"retried_gen={retried_gen}  retried_lbl={retried_lbl}"
+        f"failed={failed}  retried={retried}"
     )
     print(f"Total turns : {meta['total_turns']}  |  avg/ep: {meta['avg_turns_per_episode']}")
-    print(f"Retrieval rate: {meta['retrieval_required_rate']*100:.1f}% of turns require retrieval\n")
-
+    print(
+        f"Retrieval rate: {meta['retrieval_required_rate']*100:.1f}% "
+        f"of turns require new retrieval\n"
+    )
     print("Scenario breakdown:")
     for sc in sorted(meta["scenario_distribution"]):
         tmpl = get_scenario_template(sc)
-        print(f"  {sc}  {tmpl['name']:<40} {meta['scenario_distribution'][sc]:>3} eps")
-
+        print(f"  {sc}  {tmpl['name']:<42} {meta['scenario_distribution'][sc]:>3} eps")
     print("\nQuery type breakdown:")
-    for qt, cnt in sorted(meta["query_type_distribution"].items(), key=lambda x: -x[1]):
-        print(f"  {qt:<15} {cnt:>4} turns")
-
-    print(f"\nOutput written to: {OUTPUT_FILE}")
+    for qt, cnt in sorted(
+        meta["query_type_distribution"].items(), key=lambda x: -x[1]
+    ):
+        print(f"  {qt:<18} {cnt:>4} turns")
+    print(f"\nOutput: {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
