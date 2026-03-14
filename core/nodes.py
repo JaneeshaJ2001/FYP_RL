@@ -14,10 +14,10 @@ from langgraph.graph.message import add_messages
 from langchain_groq import ChatGroq
 from typing_extensions import TypedDict
 
-from config import CONFIG
-from ingestion import load_or_create_vectorstore
-from observability import extract_invoke_config
-from prompts import ANSWER_PROMPT, SUMMARY_PROMPT
+from core.config import CONFIG
+from core.ingestion import load_or_create_vectorstore
+from core.observability import extract_invoke_config
+from core.prompts import ANSWER_PROMPT, SUMMARY_PROMPT
 
 logger = logging.getLogger("disaster_chatbot")
 
@@ -139,7 +139,7 @@ def decide_retrieve(state: DisasterState, config: RunnableConfig) -> dict:
         logger.warning("[decide_retrieve] policy unavailable → fallback retrieve")
         return {"action": 1}
 
-    from state_encoder import encode_state  # local import to avoid circular deps
+    from rl_core.state_encoder import encode_state  # local import to avoid circular deps
     obs = encode_state(state.get("summary", ""), state["query"])
     action_arr, _ = policy.predict(obs, deterministic=True)
     action = int(action_arr)

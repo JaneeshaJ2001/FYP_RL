@@ -30,7 +30,7 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.type_aliases import Schedule
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from config import CONFIG
+from core.config import CONFIG
 
 logger = logging.getLogger("disaster_chatbot")
 

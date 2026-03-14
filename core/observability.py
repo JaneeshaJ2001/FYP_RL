@@ -9,7 +9,7 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from config import CONFIG
+from core.config import CONFIG
 
 logger = logging.getLogger("disaster_chatbot")
 

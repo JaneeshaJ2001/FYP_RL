@@ -19,7 +19,7 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from config import CONFIG
+from core.config import CONFIG
 
 logger = logging.getLogger("disaster_chatbot")
 

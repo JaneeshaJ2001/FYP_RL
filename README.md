@@ -5,21 +5,22 @@ Disaster-domain RAG chatbot focused on floods and landslides, with a reinforceme
 ## Project Structure
 
 - `main.py`: CLI entry point and chat loop
-- `nodes.py`: state definition, node logic, tracing/runtime helpers
-- `ingestion.py`: data loading and vectorstore creation/loading
-- `graph.py`: LangGraph construction and compilation
-- `observability.py`: Langfuse tracing and run-config helpers
-- `config.py`: centralized typed runtime config (`AppConfig`) + env overrides
-- `prompts.py`: prompt templates used by generation/summarization nodes
-- `chunks.json`: source chunk data for ingestion
-- `chroma_db_disaster/`: persisted vector store
-- `state_encoder.py`: frozen transformer encoder (shared by policy + env)
-- `rl_policy.py`: custom SB3 `ActorCriticPolicy` (frozen backbone + MLP head)
-- `rl_env.py`: `RAGDecisionEnv` Gymnasium environment
-- `utils.py`: `JudgeChain` + `approx_token_count`
 - `rl_train.py`: PPO training + evaluation script
-- `conversations.json` Episode dataset (query + ground_truth per turn)
-- `policy_checkpoints/` PPO checkpoints (created after training)
+- `core/`: primary chatbot package
+    - `config.py`: centralized typed runtime config (`AppConfig`) + env overrides
+    - `prompts.py`: prompt templates used by generation/summarization nodes
+    - `ingestion.py`: data loading and vectorstore creation/loading
+    - `nodes.py`: state definition, node logic, retrieval/generation nodes
+    - `graph.py`: LangGraph construction and compilation
+    - `observability.py`: Langfuse tracing and run-config helpers
+- `rl_core/`: RL-specific package
+    - `state_encoder.py`: frozen transformer encoder (shared by policy + env)
+    - `rl_policy.py`: custom SB3 `ActorCriticPolicy` (frozen backbone + MLP head)
+    - `rl_env.py`: `RAGDecisionEnv` Gymnasium environment
+    - `training_trace.py`: structured training trace logger
+    - `utils.py`: `JudgeChain` + `approx_token_count`
+- `dataset_generator/`: scripts and data for chunk/conversation dataset generation
+- `training_logs/`: generated training trace logs
 
 ## Architecture
 

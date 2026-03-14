@@ -28,10 +28,10 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback, BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
-from config import CONFIG
-from rl_env import RAGDecisionEnv
-from rl_policy import TransformerHeadPolicy
-from training_trace import configure_training_trace, trace_event
+from core.config import CONFIG
+from rl_core.rl_env import RAGDecisionEnv
+from rl_core.rl_policy import TransformerHeadPolicy
+from rl_core.training_trace import configure_training_trace, trace_event
 
 logging.basicConfig(
     level=logging.INFO,
@@ -264,11 +264,11 @@ def evaluate(
     Logs:
       avg_reward, avg_score, retrieval_%, tokens_saved vs baseline
     """
-    from utils import JudgeChain, approx_token_count
-    from state_encoder import encode_state
+    from rl_core.utils import JudgeChain, approx_token_count
+    from rl_core.state_encoder import encode_state
     from langchain_core.messages import HumanMessage
-    from graph import build_graph
-    from observability import build_run_config
+    from core.graph import build_graph
+    from core.observability import build_run_config
     import random
 
     if beta is None:

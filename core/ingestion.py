@@ -12,7 +12,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 
-from config import CONFIG
+from core.config import CONFIG
 
 logger = logging.getLogger("disaster_chatbot")
 

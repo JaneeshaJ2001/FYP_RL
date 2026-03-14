@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from transformers import AutoModel, AutoTokenizer
 
-from config import CONFIG
+from core.config import CONFIG
 
 logger = logging.getLogger("disaster_chatbot")
 
