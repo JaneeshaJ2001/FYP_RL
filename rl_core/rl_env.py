@@ -1,6 +1,6 @@
 """
 rl_env.py
-─────────
+---------
 Gymnasium environment for training the retrieval-decision policy.
 
 Observation  : float32 vector of shape (encoder_dim,)
@@ -11,7 +11,8 @@ Action space : Discrete(2)
                0 = SKIP retrieval
                1 = RETRIEVE
 
-Reward       : judge_score  -  β × approx_token_count(retrieved_docs)
+Reward       : judge_score  -  beta x approx_token_count(retrieved_docs)
+               (token_cost = 0 when action=skip, no docs retrieved)
 
 Episode      : one multi-turn conversation from the training dataset.
                Each step = one conversation turn.
@@ -33,12 +34,12 @@ from core.config import CONFIG
 from core.graph import build_graph
 from core.nodes import (
     _format_docs as _format_retrieved_docs,
-    INITIAL_GROUNDED_SUMMARY,          
+    INITIAL_GROUNDED_SUMMARY,
 )
 from core.observability import build_run_config
 from rl_core.state_encoder import encode_state
 from rl_core.training_trace import trace_event
-from rl_core.utils import JudgeChain, approx_token_count
+from rl_core.utils import JudgeChain, approx_token_count, format_chunks_for_judge
 
 logger = logging.getLogger("disaster_chatbot")
 
@@ -85,12 +86,12 @@ class RAGDecisionEnv(gym.Env):
         self._episode_idx: int = 0
         self._current_episode: list[dict] = []
         self._turn_idx: int = 0
-        self._summary: str = INITIAL_GROUNDED_SUMMARY  
+        self._summary: str = INITIAL_GROUNDED_SUMMARY
         self._thread_id: str = "rl-env-default"
         self._graph = build_graph()
-        self._judge = JudgeChain()    
-        self._turn_number: int = 1   # 1-based turn counter for current episode
-        self._prev_action: int = -1  # -1 = no previous turn (first turn sentinel)
+        self._judge = JudgeChain()
+        self._turn_number: int = 1    # 1-based turn counter for current episode
+        self._prev_action: int = -1   # -1 = no previous turn (first turn sentinel)
 
         # Stats for debugging
         self._episode_rewards: list[float] = []
@@ -117,11 +118,9 @@ class RAGDecisionEnv(gym.Env):
             self._episode_idx += 1
 
         self._turn_idx = 0
-    
         self._summary = INITIAL_GROUNDED_SUMMARY  # canonical first-turn sentinel
-        self._turn_number = 1                     # reset 1-based turn counter
-        self._prev_action = -1                    # no previous action yet
-        # ──────────────────────────────────────────────────────────────────────
+        self._turn_number = 1                      # reset 1-based turn counter
+        self._prev_action = -1                     # no previous action yet
         self._thread_id = f"rl-env-{random.randint(0, 10_000_000)}"
         self._episode_rewards = []
         self._episode_actions = []
@@ -150,7 +149,7 @@ class RAGDecisionEnv(gym.Env):
             "summary": self._summary,
             "retrieved_docs": [],
             "answer": "",
-            "mode": "rl",        
+            "mode": "rl",
             "turn_number": self._turn_number,
             "prev_action": self._prev_action,
         }
@@ -177,24 +176,33 @@ class RAGDecisionEnv(gym.Env):
 
         response: str = final_state.get("answer", "")
         retrieved_docs = final_state.get("retrieved_docs", [])
-    
+
         # Read back the updated grounded summary and new counters from the graph
         self._summary      = final_state.get("summary", self._summary)
         self._turn_number  = final_state.get("turn_number", self._turn_number + 1)
         self._prev_action  = _action   # the action just executed becomes prev_action
 
         # ── Reward ────────────────────────────────────────────────────────────
-        docs_text = _format_retrieved_docs(retrieved_docs) if retrieved_docs else ""
+        # Pass the full judge context including:
+        #   - updated grounded summary (contains previously discovered knowledge)
+        #   - retrieved_chunks truncated to 300 chars each (or sentinel for skips)
+        #   - action_taken string so judge applies the correct groundedness rule
+        # The scope_reminder is auto-injected by JudgeChain.invoke().
+        chunks_for_judge = format_chunks_for_judge(retrieved_docs)
+        # "No retrieval performed" is returned automatically when retrieved_docs is empty
+
         judge_result = self._judge.invoke(
             {
-                "query": query,
-                "conversation_summary": self._summary,
-                "action_taken": "retrieve" if _action == 1 else "skip",
-                "retrieved_docs": docs_text,
-                "response": response,
+                "query":                query,
+                "conversation_summary": self._summary,           # post-turn grounded KB
+                "action_taken":         "retrieve" if _action == 1 else "skip",
+                "retrieved_chunks":     chunks_for_judge,         # truncated or sentinel
+                "response":             response,
+                # scope_reminder auto-injected — do not pass here
             }
         )
         score: float = float(judge_result.get("score", 5))
+        # token_cost = 0 for skip turns (no docs retrieved, approx_token_count returns 0)
         token_cost: float = self.beta * approx_token_count(retrieved_docs)
         reward: float = score - token_cost
 
@@ -204,10 +212,7 @@ class RAGDecisionEnv(gym.Env):
             mode=self.mode,
             episode=self._episode_counter,
             turn=f"{self._turn_idx + 1}/{len(self._current_episode)}",
-            action=action_label,        
-            turn_number=self._turn_number - 1,   # log the turn that just completed
-            prev_action=self._prev_action,
-            # ──────────────────────────────────────────────────────────────────
+            action=action_label,
             score=score,
             token_cost=token_cost,
             reward=reward,
@@ -247,7 +252,7 @@ class RAGDecisionEnv(gym.Env):
             "action":       action,
             "score":        score,
             "token_cost":   token_cost,
-            "judge_reason": judge_result.get("reason", ""),        
+            "judge_reason": judge_result.get("reason", ""),
             "turn_number":  self._turn_number,
             "prev_action":  self._prev_action,
         }
@@ -262,7 +267,6 @@ class RAGDecisionEnv(gym.Env):
         """
         Build the observation for the CURRENT (not yet executed) turn.
 
-        === NEW GROUNDED STATE LOGIC ===
         Passes turn_number and prev_action to encode_state so the transformer
         sees the richer contextual prefix.
         """
@@ -274,6 +278,6 @@ class RAGDecisionEnv(gym.Env):
         return encode_state(
             summary=self._summary,
             query=query,
-            turn_number=self._turn_number,  
-            prev_action=self._prev_action,  
+            turn_number=self._turn_number,
+            prev_action=self._prev_action,
         )

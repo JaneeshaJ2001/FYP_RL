@@ -1,11 +1,12 @@
 """
 utils.py
-────────
+--------
 Shared utilities.  Contains:
-  • build_judge_llm()         — constructs a dedicated judge LLM instance
-  • JudgeChain                — wraps judge prompt + LLM into a callable chain
-  • approx_token_count        — lightweight token estimator for retrieved docs
-  • compute_routing_metrics   — confusion-matrix routing metrics (PDF p.9-10)
+  - build_judge_llm()        : constructs a dedicated judge LLM instance
+  - JudgeChain               : wraps judge prompt + LLM into a callable chain
+  - approx_token_count       : lightweight token estimator for retrieved docs
+  - format_chunks_for_judge  : truncates docs to 300-char chunks for judge prompt
+  - compute_routing_metrics  : confusion-matrix routing metrics (PDF p.9-10)
 """
 
 from __future__ import annotations
@@ -25,53 +26,120 @@ from core.config import CONFIG
 logger = logging.getLogger("disaster_chatbot")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Judge LLM
-# ──────────────────────────────────────────────────────────────────────────────
+# ==============================================================================
+# JUDGE PROMPT  —  Grounded-Summary-Aware
+#
+# Five scoring criteria (each contributes to ONE overall integer score 0-10):
+#
+#   1. Relevance     — does the answer address the current query?
+#   2. Correctness   — is it factually accurate given available information?
+#   3. Groundedness  — is it supported by the available evidence?
+#                      * action=retrieve : must use retrieved chunks
+#                      * action=skip     : may rely on conversation summary;
+#                        prior grounded knowledge IS valid — never penalise
+#                        a skip just because no new retrieval happened.
+#   4. Completeness  — did it give enough actionable information?
+#   5. Scope handling— out-of-scope / unanswerable → politely decline + hotline,
+#                      never hallucinate.
+#
+# Score bands:
+#   0-2  = wrong / unsafe / hallucinated
+#   3-4  = poor (major omissions or errors)
+#   5-6  = acceptable (correct but shallow)
+#   7-8  = good (solid, well-grounded answer)
+#   9-10 = excellent (complete, precise, perfectly grounded)
+# ==============================================================================
 
 _JUDGE_PROMPT_TEMPLATE = """\
-You are a strict judge evaluating a disaster-response assistant \
-(domain: floods and landslides only).
+You are a strict, fair judge evaluating a disaster-response assistant.
 
-Assess the response against ALL four criteria below, then output ONE final overall score (1-10).
+BOT SCOPE REMINDER: {scope_reminder}
 
-1. **Relevance** — Did the response directly address what the user asked?
-   Consider the conversation summary for context on the user's intent.
-   Deduct points if the response is off-topic or answers a different question.
+===================================================================
+SCORING CRITERIA  (combine into ONE overall integer score 0-10)
+===================================================================
 
-2. **Correctness / Faithfulness** — Are the facts consistent with the retrieved documents (if any) and general domain knowledge?
-   Penalise heavily for hallucinations, dangerous advice, or contradictions with the retrieved context.
+1. RELEVANCE
+   Did the assistant directly address what the user asked in the current query?
+   Deduct points for off-topic, evasive, or misdirected answers.
 
-3. **Completeness** — Did the response answer enough of the user's query?
-   Deduct points for important omissions (e.g. missing evacuation steps, no emergency contact given when relevant).
+2. CORRECTNESS
+   Is the answer factually accurate given the information the model had access
+   to at this turn — retrieved chunks if action=retrieve, or prior grounded
+   knowledge in the summary if action=skip?
+   Penalise heavily for hallucinations, dangerous advice, or contradictions
+   with available evidence.
 
-4. **Appropriateness of grounding** — action_taken={action_taken}  ("retrieve" = retrieval was used, "skip" = retrieval was skipped)
-   - If action_taken=retrieve and the response correctly draws on the retrieved documents → positive contribution.
-   - If action_taken=retrieve but the response ignores the retrieved context → deduct points.
-   - If action_taken=skip and the response is still accurate and sufficient → positive contribution.
-   - If action_taken=skip but the response contains uncertain or hallucinated domain facts → deduct points.
+3. GROUNDEDNESS  <- READ THIS CAREFULLY
+   action_taken = {action_taken}   ("retrieve" | "skip")
 
-Combine your assessment of all four criteria into a single overall score.
+   * If action_taken = "retrieve":
+       The answer MUST be supported by the retrieved chunks provided below.
+       Reward explicit use of chunk content; penalise answers that ignore chunks.
 
-Inputs
-------
-User query:
+   * If action_taken = "skip":
+       The assistant had NO new retrieval — it relied on the conversation
+       summary (the grounded knowledge base built from prior turns).
+       PREVIOUSLY DISCOVERED GROUNDED KNOWLEDGE IN THE SUMMARY IS VALID AND
+       SUFFICIENT EVIDENCE.  If the assistant correctly used that prior
+       knowledge, give it FULL CREDIT for groundedness.
+       DO NOT UNFAIRLY PUNISH SKIPS when the summary already contained the
+       needed facts.  Only deduct if the answer introduces new factual claims
+       that are NOT present in the summary AND NOT in any retrieved chunks.
+
+4. COMPLETENESS
+   Did the answer provide enough useful, actionable information?
+   Deduct for vague, overly short, or critically incomplete answers (e.g.
+   missing evacuation steps, no emergency contact when clearly relevant).
+
+5. SCOPE HANDLING
+   The bot is strictly limited to floods and landslides only.
+   * If the query is outside scope OR truly unanswerable with current knowledge:
+       the assistant MUST politely decline and/or refer to official hotlines
+       (e.g. 119 in Sri Lanka / DMC) rather than hallucinating.
+   * Reward correct scope refusals; penalise hallucinations outside domain.
+
+===================================================================
+SCORE BANDS
+===================================================================
+  0-2  = wrong / unsafe / hallucinated
+  3-4  = poor  (major omissions or domain errors)
+  5-6  = acceptable (correct but shallow or partially grounded)
+  7-8  = good  (solid, well-grounded, actionable)
+  9-10 = excellent (complete, precise, perfectly grounded)
+
+===================================================================
+INPUTS FOR THIS TURN
+===================================================================
+
+Current user query:
 {query}
 
-Conversation summary (prior context):
+Conversation summary  (grounded knowledge base — facts from prior retrieved turns):
 {conversation_summary}
 
-Retrieved documents (empty if retrieval was skipped):
-{retrieved_docs}
+Retrieved chunks  (populated only when action_taken = "retrieve"):
+{retrieved_chunks}
 
-Generated response:
+Assistant's answer:
 {response}
 
-Output ONLY valid JSON on a single line — no markdown, no preamble:
-{{"score": <int 1-10>, "reason": "<brief explanation under 40 words>"}}
+===================================================================
+OUTPUT
+===================================================================
+Output ONLY valid JSON on a single line — no markdown, no preamble, no trailing text:
+{{"score": <integer 0-10>, "reason": "<brief <=50-word explanation referencing the 5 criteria>"}}
 """
 
 JUDGE_PROMPT = ChatPromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
+
+# Static scope reminder injected into every judge call — callers never override this
+_SCOPE_REMINDER = (
+    "This assistant ONLY supports floods and landslides. "
+    "It must NEVER hallucinate or answer questions outside this domain. "
+    "Out-of-scope queries must be politely declined with a referral to official "
+    "hotlines (e.g. 119 / Disaster Management Centre)."
+)
 
 
 def build_judge_llm():
@@ -104,16 +172,27 @@ class JudgeChain:
     """
     Wraps JUDGE_PROMPT + judge LLM into a simple callable.
 
-    Usage:
-        judge = JudgeChain()
-        result = judge.invoke({
-            "query": "...",
-            "conversation_summary": "...",   # prior turn summary or empty string
-            "action_taken": "retrieve",       # "retrieve" or "skip"
-            "retrieved_docs": "...",           # formatted doc text or empty string
-            "response": "...",
-        })
-        # result → {"score": 8, "reason": "..."}
+    invoke() input keys:
+    -------------------------------------------------------
+    Required:
+        query               : str  — current user query
+        conversation_summary: str  — grounded knowledge base from prior turns
+        action_taken        : str  — "retrieve" | "skip"
+        retrieved_chunks    : str  — use format_chunks_for_judge(docs) for retrieve
+                                     turns; pass "" or omit entirely for skip turns
+        response            : str  — assistant answer this turn
+
+    Auto-injected (never pass manually):
+        scope_reminder      : str  — always _SCOPE_REMINDER
+
+    Returns: {"score": int (0-10), "reason": str}
+
+    Score bands:
+        0-2  = wrong / unsafe / hallucinated
+        3-4  = poor
+        5-6  = acceptable
+        7-8  = good
+        9-10 = excellent
     """
 
     def __init__(self):
@@ -121,8 +200,17 @@ class JudgeChain:
         self._chain = JUDGE_PROMPT | llm | StrOutputParser()
 
     def invoke(self, inputs: dict[str, str]) -> dict[str, Any]:
-        """Return parsed JSON dict with 'score' and 'reason'."""
-        raw = self._chain.invoke(inputs)
+        """Return parsed JSON dict with 'score' (int 0-10) and 'reason' (str)."""
+        # Always inject static scope reminder — cannot be overridden by callers
+        full_inputs = {
+            "scope_reminder": _SCOPE_REMINDER,
+            **inputs,
+        }
+        # Ensure retrieved_chunks has a safe default for skip turns
+        if not full_inputs.get("retrieved_chunks"):
+            full_inputs["retrieved_chunks"] = "No retrieval performed"
+
+        raw = self._chain.invoke(full_inputs)
         return _parse_judge_output(raw)
 
 
@@ -131,33 +219,56 @@ def _parse_judge_output(raw: str) -> dict[str, Any]:
     text = re.sub(r"```(?:json)?|```", "", raw).strip()
     try:
         data  = json.loads(text)
-        score = max(1, min(10, int(data.get("score", 5))))
+        # Score range is 0-10
+        score = max(0, min(10, int(data.get("score", 5))))
         return {"score": score, "reason": data.get("reason", "")}
     except Exception:
         pass
 
-    numbers = re.findall(r"\b([1-9]|10)\b", text)
+    numbers = re.findall(r"\b([0-9]|10)\b", text)
     score   = int(numbers[0]) if numbers else 5
     logger.warning("Judge output parse failed; defaulted score=%d. Raw: %r", score, raw)
     return {"score": score, "reason": raw[:120]}
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 # Token cost helper
-# ──────────────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
 
 def approx_token_count(docs: list[Document]) -> int:
     """
     Rough token estimate for retrieved docs (4 chars ≈ 1 token).
-    Used to compute the retrieval cost term β * tokens.
+    Used to compute the retrieval cost term: beta * tokens.
+    Cost is 0 when action=0 (skip) — no docs are retrieved.
     """
     total_chars = sum(len(d.page_content) for d in docs)
     return total_chars // 4
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Routing metrics  (PDF p.9-10)
-# ──────────────────────────────────────────────────────────────────────────────
+def format_chunks_for_judge(docs: list[Document], max_chars_per_chunk: int = 300) -> str:
+    """
+    Format retrieved documents for the judge prompt.
+
+    Each chunk is truncated to `max_chars_per_chunk` characters so the judge
+    prompt stays concise while still providing enough content to verify groundedness.
+
+    Returns "No retrieval performed" when docs is empty (skip turns).
+    """
+    if not docs:
+        return "No retrieval performed"
+
+    parts = []
+    for i, doc in enumerate(docs, 1):
+        content = doc.page_content
+        if len(content) > max_chars_per_chunk:
+            content = content[:max_chars_per_chunk] + "..."
+        parts.append(f"[Chunk {i}] {content}")
+    return "\n\n".join(parts)
+
+
+# ------------------------------------------------------------------------------
+# Routing metrics
+# ------------------------------------------------------------------------------
 
 def compute_routing_metrics(
     actions: list[int],
