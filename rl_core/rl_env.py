@@ -4,7 +4,8 @@ rl_env.py
 Gymnasium environment for training the retrieval-decision policy.
 
 Observation  : float32 vector of shape (encoder_dim,)
-               = mean-pooled transformer embedding of "[summary] [SEP] [query]"
+               = mean-pooled transformer embedding of a richer context string:
+               "[TURN <N>] [SEP] [PREV_ACTION <label>] [SEP] [summary] [SEP] [query]"
 
 Action space : Discrete(2)
                0 = SKIP retrieval
@@ -30,7 +31,10 @@ from langchain_core.messages import HumanMessage
 
 from core.config import CONFIG
 from core.graph import build_graph
-from core.nodes import _format_docs as _format_retrieved_docs
+from core.nodes import (
+    _format_docs as _format_retrieved_docs,
+    INITIAL_GROUNDED_SUMMARY,          
+)
 from core.observability import build_run_config
 from rl_core.state_encoder import encode_state
 from rl_core.training_trace import trace_event
@@ -78,13 +82,15 @@ class RAGDecisionEnv(gym.Env):
         self.action_space = spaces.Discrete(2)  # 0=skip, 1=retrieve
 
         # ── Runtime state ─────────────────────────────────────────────────────
-        self._episode_idx: int = 0          # for sequential eval
+        self._episode_idx: int = 0
         self._current_episode: list[dict] = []
         self._turn_idx: int = 0
-        self._summary: str = ""
+        self._summary: str = INITIAL_GROUNDED_SUMMARY  
         self._thread_id: str = "rl-env-default"
         self._graph = build_graph()
-        self._judge = JudgeChain()
+        self._judge = JudgeChain()    
+        self._turn_number: int = 1   # 1-based turn counter for current episode
+        self._prev_action: int = -1  # -1 = no previous turn (first turn sentinel)
 
         # Stats for debugging
         self._episode_rewards: list[float] = []
@@ -111,7 +117,11 @@ class RAGDecisionEnv(gym.Env):
             self._episode_idx += 1
 
         self._turn_idx = 0
-        self._summary = ""
+    
+        self._summary = INITIAL_GROUNDED_SUMMARY  # canonical first-turn sentinel
+        self._turn_number = 1                     # reset 1-based turn counter
+        self._prev_action = -1                    # no previous action yet
+        # ──────────────────────────────────────────────────────────────────────
         self._thread_id = f"rl-env-{random.randint(0, 10_000_000)}"
         self._episode_rewards = []
         self._episode_actions = []
@@ -131,18 +141,21 @@ class RAGDecisionEnv(gym.Env):
         turn = self._current_episode[self._turn_idx]
         query: str = turn["query"]
 
-        # ── Run one graph turn with forced action ─────────────────────────────
         _action = int(action)  # cast numpy.int64 → int for msgpack serialisation
+
+        # ── Run one graph turn with forced action ─────────────────────────────
         input_state = {
             "messages": [HumanMessage(content=query)],
             "query": query,
             "summary": self._summary,
             "retrieved_docs": [],
             "answer": "",
-            "mode": "rl",
+            "mode": "rl",        
+            "turn_number": self._turn_number,
+            "prev_action": self._prev_action,
         }
         run_config = build_run_config(self._thread_id)
-        run_config["configurable"]["forced_action"] = _action  # per-invocation, not persisted in state
+        run_config["configurable"]["forced_action"] = _action
 
         final_state: dict = {}
         try:
@@ -159,13 +172,16 @@ class RAGDecisionEnv(gym.Env):
                 turn=f"{self._turn_idx + 1}/{len(self._current_episode)}",
                 error=str(exc),
             )
-            # Return zero reward and end episode on graph failure
             obs = self._build_obs()
             return obs, 0.0, True, False, {"error": str(exc)}
 
         response: str = final_state.get("answer", "")
         retrieved_docs = final_state.get("retrieved_docs", [])
-        self._summary = final_state.get("summary", self._summary)
+    
+        # Read back the updated grounded summary and new counters from the graph
+        self._summary      = final_state.get("summary", self._summary)
+        self._turn_number  = final_state.get("turn_number", self._turn_number + 1)
+        self._prev_action  = _action   # the action just executed becomes prev_action
 
         # ── Reward ────────────────────────────────────────────────────────────
         docs_text = _format_retrieved_docs(retrieved_docs) if retrieved_docs else ""
@@ -188,7 +204,10 @@ class RAGDecisionEnv(gym.Env):
             mode=self.mode,
             episode=self._episode_counter,
             turn=f"{self._turn_idx + 1}/{len(self._current_episode)}",
-            action=action_label,
+            action=action_label,        
+            turn_number=self._turn_number - 1,   # log the turn that just completed
+            prev_action=self._prev_action,
+            # ──────────────────────────────────────────────────────────────────
             score=score,
             token_cost=token_cost,
             reward=reward,
@@ -215,33 +234,46 @@ class RAGDecisionEnv(gym.Env):
                 avg_reward=avg_reward,
                 retrieval_rate_pct=ret_rate_pct,
             )
-            logger.debug(
+            logger.info(
                 "[env] episode done | turns=%d avg_reward=%.3f retrieval_rate=%.0f%%",
                 len(self._current_episode), avg_reward, ret_rate_pct,
             )
-            # Terminal obs: SB3 doesn't use it for training; avoid a wasted
-            # encoder forward-pass by returning a zero vector instead.
             obs = np.zeros(self.observation_space.shape, dtype=np.float32)
         else:
             obs = self._build_obs()
+
         info: dict[str, Any] = {
-            "turn": self._turn_idx,
-            "action": action,
-            "score": score,
-            "token_cost": token_cost,
-            "judge_reason": judge_result.get("reason", ""),
+            "turn":         self._turn_idx,
+            "action":       action,
+            "score":        score,
+            "token_cost":   token_cost,
+            "judge_reason": judge_result.get("reason", ""),        
+            "turn_number":  self._turn_number,
+            "prev_action":  self._prev_action,
         }
         return obs, reward, done, False, info
 
     def render(self):
-        pass  # no rendering
+        pass
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _build_obs(self) -> np.ndarray:
-        """Build the observation for the CURRENT (not yet executed) turn."""
+        """
+        Build the observation for the CURRENT (not yet executed) turn.
+
+        === NEW GROUNDED STATE LOGIC ===
+        Passes turn_number and prev_action to encode_state so the transformer
+        sees the richer contextual prefix.
+        """
         if self._turn_idx < len(self._current_episode):
             query = self._current_episode[self._turn_idx]["query"]
         else:
-            query = ""  # episode is over — dummy obs
-        return encode_state(self._summary, query)
+            query = ""   # episode is over — dummy obs
+
+        return encode_state(
+            summary=self._summary,
+            query=query,
+            turn_number=self._turn_number,  
+            prev_action=self._prev_action,  
+        )

@@ -17,15 +17,24 @@ from typing_extensions import TypedDict
 from core.config import CONFIG
 from core.ingestion import load_or_create_vectorstore
 from core.observability import extract_invoke_config
-from core.prompts import ANSWER_PROMPT, SUMMARY_PROMPT
+from core.prompts import (
+    ANSWER_PROMPT,
+    SUMMARY_PROMPT,                      # kept for non-RL / baseline use
+    GROUNDED_SUMMARY_RETRIEVE_PROMPT,
+    GROUNDED_SUMMARY_SKIP_PROMPT,
+)
 
 logger = logging.getLogger("disaster_chatbot")
+
+# Sentinel value placed in `summary` at the start of every episode so the
+# grounded summarizer knows no knowledge has been established yet.
+INITIAL_GROUNDED_SUMMARY = "No prior grounded knowledge established."
 
 
 class DisasterState(TypedDict):
     # Full message history for display; add_messages handles append semantics
     messages: Annotated[list[AnyMessage], add_messages]
-    # Running conversation summary (kept small deliberately)
+    # Running GROUNDED conversation summary (knowledge-base style)
     summary: str
     # Cleaned user input for this turn
     query: str
@@ -36,7 +45,11 @@ class DisasterState(TypedDict):
     # Retrieval decision: 1 = retrieve, 0 = skip  (set by decide_retrieve node)
     action: int
     # Graph operation mode: "baseline" forces action=1; "policy" uses the RL policy
-    mode: Literal["baseline", "policy"]
+    mode: Literal["baseline", "policy", "rl"]
+    # 1-based turn counter within the current episode
+    turn_number: int
+    # Action taken in the PREVIOUS turn (-1 = no previous turn / first turn)
+    prev_action: int
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -44,7 +57,6 @@ class DisasterState(TypedDict):
 # ──────────────────────────────────────────────────────────────────────────────
 _llm: Any = None
 _vectorstore: Any = None
-# Lazy-loaded RL policy (only needed in "policy" mode)
 _rl_policy: Any = None
 
 
@@ -140,7 +152,12 @@ def decide_retrieve(state: DisasterState, config: RunnableConfig) -> dict:
         return {"action": 1}
 
     from rl_core.state_encoder import encode_state  # local import to avoid circular deps
-    obs = encode_state(state.get("summary", ""), state["query"])
+    obs = encode_state(
+        summary=state.get("summary", INITIAL_GROUNDED_SUMMARY),
+        query=state["query"],
+        turn_number=state.get("turn_number", 1), 
+        prev_action=state.get("prev_action", -1), 
+    )
     action_arr, _ = policy.predict(obs, deterministic=True)
     action = int(action_arr)
     logger.info("[decide_retrieve] policy action=%d", action)
@@ -191,6 +208,18 @@ def _format_docs(docs: list[Document]) -> str:
     return "\n\n".join(parts)
 
 
+def _format_retrieved_chunks_for_summary(docs: list[Document]) -> str:
+    """
+    Format retrieved documents for the grounded summary prompt.
+    Strips source metadata tags to keep the prompt focused on raw content.
+    """
+    if not docs:
+        return "(no chunks retrieved)"
+    return "\n\n".join(
+        f"[Chunk {i}] {doc.page_content}" for i, doc in enumerate(docs, 1)
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # generate_answer node
 # ──────────────────────────────────────────────────────────────────────────────
@@ -198,10 +227,9 @@ def _format_docs(docs: list[Document]) -> str:
 def generate_answer(state: DisasterState, config: RunnableConfig) -> dict:
     """Generate a safety-focused answer using retrieved context and summary."""
     llm = _get_llm()
-    # retrieved_docs may be empty if retrieval was skipped
     docs = state.get("retrieved_docs", [])
     context = _format_docs(docs)
-    summary = state.get("summary", "")
+    summary = state.get("summary", INITIAL_GROUNDED_SUMMARY)
     query = state["query"]
 
     logger.info(
@@ -232,37 +260,84 @@ def generate_answer(state: DisasterState, config: RunnableConfig) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# summarize_conversation node
+# summarize_conversation node  — GROUNDED REWRITE
 # ──────────────────────────────────────────────────────────────────────────────
 
 def summarize_conversation(
     state: DisasterState,
     config: RunnableConfig,
 ) -> dict:
-    """Maintain a running summary to keep the context window small."""
-    messages = state.get("messages", [])
+    """
+    === NEW GROUNDED STATE LOGIC ===
 
+    Maintain a GROUNDED KNOWLEDGE BASE summary instead of a generic recap.
+
+    Dispatch logic:
+      - Turn 1 (no prior grounded knowledge):
+            summary starts as INITIAL_GROUNDED_SUMMARY
+      - action == 1 (retrieve):
+            Use GROUNDED_SUMMARY_RETRIEVE_PROMPT to enrich the knowledge base
+            with facts explicitly supported by retrieved chunks.
+      - action == 0 (skip):
+            Use GROUNDED_SUMMARY_SKIP_PROMPT to preserve existing knowledge
+            WITHOUT adding any new ungrounded claims.
+
+    Also advances turn_number and records prev_action for the next turn.
+    """
+    messages = state.get("messages", [])
+    action   = state.get("action", 1)
+    docs     = state.get("retrieved_docs", [])
+    current_summary = state.get("summary", INITIAL_GROUNDED_SUMMARY)
+    turn_number     = state.get("turn_number", 1)
+
+    # Extract last human / AI messages
     human_msgs = [m for m in messages if isinstance(m, HumanMessage)]
-    ai_msgs = [m for m in messages if isinstance(m, AIMessage)]
+    ai_msgs    = [m for m in messages if isinstance(m, AIMessage)]
 
     if not human_msgs or not ai_msgs:
-        return {"summary": state.get("summary", "")}
+        # Nothing to summarize yet — still advance counters
+        return {
+            "summary":     current_summary,
+            "turn_number": turn_number + 1,
+            "prev_action": action, 
+        }
 
-    last_user = human_msgs[-1].content
+    last_user      = human_msgs[-1].content
     last_assistant = ai_msgs[-1].content
-    current_summary = state.get("summary", "")
 
-    logger.info("[summarize] updating summary")
-
-    llm = _get_llm()
-    chain = SUMMARY_PROMPT | llm
-    invoke_payload = {
-        "max_tokens": CONFIG.summary_max_tokens,
-        "summary": current_summary or "(no prior summary)",
-        "user_msg": last_user,
-        "assistant_msg": last_assistant,
-    }
+    llm    = _get_llm()
     invoke_config = extract_invoke_config(config)
+
+    if action == 1:
+        # Retrieval was performed — enrich knowledge base with chunk-supported facts
+        retrieved_chunks_text = _format_retrieved_chunks_for_summary(docs)
+        logger.info(
+            "[summarize] RETRIEVE path — enriching grounded knowledge base "
+            "(chunks=%d, current_summary_len=%d)",
+            len(docs), len(current_summary),
+        )
+        chain = GROUNDED_SUMMARY_RETRIEVE_PROMPT | llm
+        invoke_payload = {
+            "max_tokens": CONFIG.summary_max_tokens,
+            "summary":         current_summary,
+            "retrieved_chunks": retrieved_chunks_text,
+            "assistant_msg":   last_assistant,
+        }
+    else:
+        # Retrieval was SKIPPED — preserve existing knowledge, no new claims
+        logger.info(
+            "[summarize] SKIP path — preserving grounded knowledge base "
+            "(current_summary_len=%d)",
+            len(current_summary),
+        )
+        chain = GROUNDED_SUMMARY_SKIP_PROMPT | llm
+        invoke_payload = {
+            "max_tokens":    CONFIG.summary_max_tokens,
+            "summary":       current_summary,
+            "user_msg":      last_user,
+            "assistant_msg": last_assistant,
+        }
+
     result = (
         chain.invoke(invoke_payload, config=invoke_config)
         if invoke_config
@@ -270,5 +345,14 @@ def summarize_conversation(
     )
 
     new_summary = result.content if hasattr(result, "content") else str(result)
-    logger.info("[summarize] new summary length=%d chars", len(new_summary))
-    return {"summary": new_summary}
+    logger.info(
+        "[summarize] updated grounded knowledge base | action=%s | len=%d chars",
+        "RETRIEVE" if action == 1 else "SKIP",
+        len(new_summary),
+    )
+
+    return {
+        "summary":     new_summary,
+        "turn_number": turn_number + 1,
+        "prev_action": action,
+    }
