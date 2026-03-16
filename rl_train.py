@@ -327,10 +327,22 @@ def train(
     trace_event("TRAINING_END", final_model_path=f"{final_path}.zip")
 
     # ── Automatic full post-training evaluation with all 4 baselines ────────
-    print("\n" + "═" * 64)
+    print("\n" + "═" * 80)
     print("  POST-TRAINING EVALUATION  –  4 Strategies")
-    print("─" * 64 + "\n")
+    print("  Comparing: Policy (RL) vs Always-Retrieve vs Always-Skip vs Heuristic-Router")
+    print("─" * 80)
+    print(f"  Evaluating on {len(val_episodes)} validation episodes...")
+    print(f"  Results will be saved to: {save_path}/final_evaluation/")
+    print("═" * 80 + "\n")
+
+    t_eval_start = time.time()
     results = evaluate(model, val_episodes, save_path=save_path)
+    t_eval_duration = time.time() - t_eval_start
+
+    print("\n" + "═" * 80)
+    print(f"  POST-TRAINING EVALUATION COMPLETE  ({t_eval_duration:.1f}s)")
+    print("═" * 80 + "\n")
+    
     return model, results
 
 
