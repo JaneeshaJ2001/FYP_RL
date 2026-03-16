@@ -88,7 +88,7 @@ python main.py --mode policy
 5. Rebuild the vector store when needed:
 
 ```bash
-python main.py --ingest --json chunks.json
+python main.py --ingest --json dataset_generator/chunk_dataset/chunks_grouped.json
 ```
 
 ## Training the RL Policy

@@ -147,12 +147,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--ingest",
         action="store_true",
-        help="Force re-ingest chunks.json into Chroma (wipes existing DB).",
+        help="Force re-ingest dataset_generator/chunk_dataset/chunks_grouped.json into Chroma (wipes existing DB).",
     )
     parser.add_argument(
         "--json",
         default=CONFIG.chunks_path,
-        help="Path to chunks file (default: chunks.json).",
+        help="Path to chunks file (default: dataset_generator/chunk_dataset/chunks_grouped.json).",
     )
     parser.add_argument(
         "--thread",

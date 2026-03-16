@@ -49,7 +49,7 @@ class AppConfig:
     top_k: int = 3
 
     # Ingestion
-    chunks_path: str = "chunks.json"
+    chunks_path: str = "dataset_generator/chunk_dataset/chunks_grouped.json"
 
     # Embeddings
     embed_model: str = "sentence-transformers/all-MiniLM-L6-v2"
