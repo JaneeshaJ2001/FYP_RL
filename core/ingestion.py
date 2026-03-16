@@ -22,23 +22,78 @@ def build_embeddings():
 
 
 def _load_chunks_file(file_path: str) -> "pd.DataFrame":
-    """Load chunk data from a JSON array file."""
+    """Load chunk data from supported JSON chunk schemas."""
     with open(file_path, "r", encoding="utf-8") as file_handle:
         raw = file_handle.read().strip()
 
-    if raw.startswith("["):
-        try:
-            records = json.loads(raw)
-            df = pd.DataFrame(records)
-            logger.info("Loaded %d records from JSON array", len(df))
-            return df
-        except Exception as exc:
-            logger.warning("JSON array parse failed: %s", exc)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Cannot parse {file_path}.\n"
+            "Expected valid JSON containing chunk records."
+        ) from exc
 
-    raise ValueError(
-        f"Cannot parse {file_path}.\n"
-        "Expected: JSON array [ {...}, ... ] with columns 'chunk' and 'metadata'."
+    records: list[object] | None = None
+    if isinstance(payload, list):
+        records = payload
+    elif isinstance(payload, dict):
+        # Support wrapped payloads such as {"sop_chunks": [...]}.
+        for key in ("sop_chunks", "chunks", "records", "data"):
+            candidate = payload.get(key)
+            if isinstance(candidate, list):
+                records = candidate
+                logger.info("Detected wrapped chunks payload under key '%s'", key)
+                break
+
+    if not isinstance(records, list):
+        raise ValueError(
+            f"Cannot parse {file_path}.\n"
+            "Expected: JSON array [ {...}, ... ] or object containing a list under "
+            "'sop_chunks'."
+        )
+
+    normalized_records: list[dict[str, object]] = []
+    skipped_records = 0
+    for record in records:
+        if not isinstance(record, dict):
+            skipped_records += 1
+            continue
+
+        chunk = record.get("chunk")
+        if chunk is None:
+            chunk = record.get("text")
+        if chunk is None:
+            chunk = record.get("content")
+
+        if chunk is None:
+            skipped_records += 1
+            continue
+
+        metadata = record.get("metadata")
+        if metadata is None:
+            metadata = {
+                key: value
+                for key, value in record.items()
+                if key not in {"chunk", "text", "content", "metadata"}
+            }
+
+        normalized_records.append({"chunk": str(chunk), "metadata": metadata})
+
+    if not normalized_records:
+        raise ValueError(
+            f"Cannot parse {file_path}.\n"
+            "Expected records with a 'chunk' or 'text' field and optional 'metadata'."
+        )
+
+    df = pd.DataFrame(normalized_records)
+    logger.info(
+        "Loaded %d chunk records from %s (skipped=%d)",
+        len(df),
+        file_path,
+        skipped_records,
     )
+    return df
 
 
 def load_or_create_vectorstore(
