@@ -5,7 +5,7 @@ Disaster-domain RAG chatbot focused on floods and landslides, with a reinforceme
 ## Project Structure
 
 - `main.py`: CLI entry point and chat loop
-- `rl_train.py`: PPO training + evaluation script
+- `rl_train.py`: PPO training/evaluation CLI entry point
 - `core/`: primary chatbot package
     - `config.py`: centralized typed runtime config (`AppConfig`) + env overrides
     - `prompts.py`: prompt templates used by generation/summarization nodes
@@ -17,6 +17,7 @@ Disaster-domain RAG chatbot focused on floods and landslides, with a reinforceme
     - `state_encoder.py`: frozen transformer encoder (shared by policy + env)
     - `rl_policy.py`: custom SB3 `ActorCriticPolicy` (frozen backbone + MLP head)
     - `rl_env.py`: `RAGDecisionEnv` Gymnasium environment
+    - `evaluation.py`: evaluation runner, validation callback, and reporting helpers
     - `training_trace.py`: structured training trace logger
     - `utils.py`: `JudgeChain` + `approx_token_count`
 - `dataset_generator/`: scripts and data for chunk/conversation dataset generation
