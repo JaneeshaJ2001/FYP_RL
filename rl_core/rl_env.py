@@ -215,7 +215,7 @@ class RAGDecisionEnv(gym.Env):
                 avg_reward=avg_reward,
                 retrieval_rate_pct=ret_rate_pct,
             )
-            logger.info(
+            logger.debug(
                 "[env] episode done | turns=%d avg_reward=%.3f retrieval_rate=%.0f%%",
                 len(self._current_episode), avg_reward, ret_rate_pct,
             )

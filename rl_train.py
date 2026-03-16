@@ -38,9 +38,14 @@ from rl_core.training_trace import configure_training_trace, trace_event
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    format="%(asctime)s  %(message)s",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("rl_train")
+
+# Suppress noisy third-party loggers (HTTP clients, LangFuse telemetry, SB3 internals)
+for _noisy_logger in ("stable_baselines3", "httpx", "httpcore", "langfuse", "openai"):
+    logging.getLogger(_noisy_logger).setLevel(logging.WARNING)
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_EPISODES_PATH = REPO_ROOT / "dataset_generator" / "dialog_dataset" / "conversations.json"
@@ -494,10 +499,6 @@ class EvaluationCallback(BaseCallback):
             return
 
         self._lazy_init()
-        logger.info(
-            "=== EvaluationCallback | ppo_update=%d | env_steps=%d ===",
-            self._ppo_updates, self.num_timesteps,
-        )
 
         all_turns: list[dict] = []
         for ep in self.val_episodes:
@@ -529,6 +530,29 @@ class EvaluationCallback(BaseCallback):
             self.logger.record(f"{pfx}/retrieval_rate",  sm.get("retrieval_rate",  0))
             self.logger.record(f"{pfx}/unsafe_skip_rate", sm.get("unsafe_skip_rate", 0))
 
+        # ── Clean terminal checkpoint summary ──────────────────────────────
+        _hr = "─" * 62
+        _ts = time.strftime("%H:%M:%S")
+        print(f"\n{_hr}")
+        print(
+            f"  Validation Checkpoint  │  "
+            f"update={self._ppo_updates}  step={self.num_timesteps}  ({_ts})"
+        )
+        print(_hr)
+        print(
+            f"  Judge Score    {metrics['avg_judge_score']:5.2f}/10"
+            f"     Retrieval Rate    {metrics['retrieval_rate'] * 100:5.1f}%"
+        )
+        print(
+            f"  Unsafe Skip    {metrics['unsafe_skip_rate']:8.3f}"
+            f"   Wasteful Retr     {metrics['wasteful_retrieve_rate']:8.3f}"
+        )
+        print(
+            f"  Utility        {metrics['utility']:8.4f}"
+            f"   F1               {metrics['f1']:8.3f}"
+        )
+        print(_hr + "\n")
+
         # ── trace_event ─────────────────────
         trace_event(
             "VALIDATION_CHECKPOINT",
@@ -541,17 +565,6 @@ class EvaluationCallback(BaseCallback):
             wasteful_retrieve_rate=metrics["wasteful_retrieve_rate"],
             utility=metrics["utility"],
             f1=metrics["f1"],
-        )
-        logger.info(
-            "Val update=%d steps=%d | judge=%.2f ret=%.0f%% "
-            "unsafe_skip=%.3f wasteful=%.3f utility=%.4f F1=%.3f",
-            self._ppo_updates, self.num_timesteps,
-            metrics["avg_judge_score"],
-            metrics["retrieval_rate"] * 100,
-            metrics["unsafe_skip_rate"],
-            metrics["wasteful_retrieve_rate"],
-            metrics["utility"],
-            metrics["f1"],
         )
 
         # ── Save checkpoint artifacts ──────────────────────────────────────
@@ -596,6 +609,12 @@ class RetrievalStatsCallback(BaseCallback):
             mean_reward   = float(np.mean(self._rewards)) if self._rewards else float("nan")
             self.logger.record("train/retrieval_rate",   retrieve_rate)
             self.logger.record("train/mean_judge_score", mean_reward)
+            _ts = time.strftime("%H:%M:%S")
+            print(
+                f"  [{_ts}]  step {self.n_calls:>6}  │  "
+                f"retrieval {retrieve_rate * 100:.1f}%  │  "
+                f"judge score {mean_reward:.2f}"
+            )
             trace_event(
                 "ROLLOUT_SUMMARY",
                 step=self.n_calls,
@@ -659,7 +678,7 @@ def evaluate(
     policy_sample_turns: list[dict] = []
 
     for strategy_name, kwargs in strategies:
-        logger.info("─── Evaluating: %s ───", strategy_name)
+        logger.info("Evaluating: %s ...", strategy_name)
         all_turns: list[dict] = []
 
         for ep in val_episodes:
@@ -689,17 +708,12 @@ def evaluate(
             utility=metrics["utility"],
             f1=metrics["f1"],
         )
-        logger.info(
-            "%-20s | judge=%.2f ret=%.0f%% unsafe_skip=%.3f "
-            "wasteful=%.3f tokens=%.0f utility=%.4f F1=%.3f",
-            strategy_name,
-            metrics["avg_judge_score"],
-            metrics["retrieval_rate"] * 100,
-            metrics["unsafe_skip_rate"],
-            metrics["wasteful_retrieve_rate"],
-            metrics["avg_tokens"],
-            metrics["utility"],
-            metrics["f1"],
+        print(
+            f"  {strategy_name:<20}  "
+            f"judge={metrics['avg_judge_score']:.2f}/10  "
+            f"ret={metrics['retrieval_rate'] * 100:.0f}%  "
+            f"F1={metrics['f1']:.3f}  "
+            f"utility={metrics['utility']:.4f}"
         )
 
     # ── Token savings vs Always-Retrieve baseline ─────────────────────────
@@ -877,7 +891,17 @@ def train(
     At end of training, automatically runs the full 4-baseline evaluate().
     """
     trace_log_path = configure_training_trace(trace_log)
-    logger.info("Detailed training trace: %s", trace_log_path)
+
+    # ── Training banner ───────────────────────────────────────────────────
+    print("\n" + "═" * 64)
+    print("  PPO Retrieval Policy  –  Training")
+    print("─" * 64)
+    print(f"  Timesteps     : {total_timesteps:,}")
+    print(f"  Train eps     : {len(train_episodes)}   |   Val eps : {len(val_episodes)}")
+    print(f"  Save path     : {save_path}")
+    print(f"  Trace log     : {trace_log_path}")
+    print("═" * 64 + "\n")
+
     trace_event(
         "TRAINING_START",
         total_timesteps=total_timesteps,
@@ -908,18 +932,18 @@ def train(
         vf_coef=0.5,
         max_grad_norm=0.5,
         tensorboard_log=tensorboard_log,
-        verbose=1,
+        verbose=0,   # our callbacks provide terminal output
     )
 
-    logger.info(
-        "PPO model created. Trainable params: %d",
-        sum(p.numel() for p in model.policy.parameters() if p.requires_grad),
-    )
+    trainable_params = sum(p.numel() for p in model.policy.parameters() if p.requires_grad)
 
     # ── EvaluationCallback: ~10 eval points across total training  (PDF p.6) ─
     # n_steps=256 → 1 update per 256 env steps
     # We want ~10 eval checkpoints → eval every total_timesteps / (256 * 10) updates
     updates_per_eval = max(1, total_timesteps // (256 * 10))
+
+    print(f"  PPO model ready  |  trainable params: {trainable_params:,}")
+    print(f"  Eval checkpoints : every {updates_per_eval} update(s)  (~{total_timesteps // (updates_per_eval * 256)} checkpoints total)\n")
 
     eval_callback  = EvaluationCallback(
         val_episodes=val_episodes,
@@ -930,7 +954,6 @@ def train(
     stats_callback = RetrievalStatsCallback()
 
     # ── Train ─────────────────────────────────────────────────────────────
-    logger.info("Starting PPO training for %d timesteps...", total_timesteps)
     model.learn(
         total_timesteps=total_timesteps,
         callback=[eval_callback, stats_callback],
@@ -940,11 +963,13 @@ def train(
 
     final_path = f"{save_path}/policy_model_final"
     model.save(final_path)
-    logger.info("Final model saved to %s.zip", final_path)
+    print(f"\n  Model saved → {final_path}.zip")
     trace_event("TRAINING_END", final_model_path=f"{final_path}.zip")
 
-    # ── Automatic full post-training evaluation with all 4 baselines ─────
-    logger.info("Running full post-training evaluation (4 baselines)...")
+    # ── Automatic full post-training evaluation with all 4 baselines ────────
+    print("\n" + "═" * 64)
+    print("  POST-TRAINING EVALUATION  –  4 Strategies")
+    print("─" * 64 + "\n")
     results = evaluate(model, val_episodes, save_path=save_path)
     return model, results
 
@@ -1016,15 +1041,4 @@ if __name__ == "__main__":
             trace_log=args.trace_log,
         )
 
-    # Summary table already printed inside evaluate(); brief dict here for CI/scripting
-    print("\n── Raw Evaluation Dict (top-level scalars) ──────────────")
-    for strategy in ["Policy", "Always-Retrieve", "Always-Skip", "Heuristic-Router"]:
-        if strategy not in results:
-            continue
-        r = results[strategy]
-        print(f"\n  {strategy}:")
-        for k in ["avg_judge_score", "retrieval_rate", "avg_tokens",
-                  "unsafe_skip_rate", "wasteful_retrieve_rate", "utility", "f1"]:
-            v = r.get(k, float("nan"))
-            print(f"    {k:<32} {v:.4f}" if isinstance(v, float) else f"    {k:<32} {v}")
-    print("─────────────────────────────────────────────────────────\n")
+    # Full summary table printed inside evaluate(); nothing more needed here
