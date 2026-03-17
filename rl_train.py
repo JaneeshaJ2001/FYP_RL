@@ -246,7 +246,7 @@ def train(
     Train PPO policy. PPO hyperparameters are UNCHANGED from original.
 
     EvaluationCallback fires every ~total_timesteps/10/n_steps PPO updates,
-    logging the full metric set from the PDF to TensorBoard + trace file.
+    logging the full metric set to TensorBoard + trace file.
 
     At end of training, automatically runs the full 4-baseline evaluate().
     """
@@ -297,7 +297,7 @@ def train(
 
     trainable_params = sum(p.numel() for p in model.policy.parameters() if p.requires_grad)
 
-    # ── EvaluationCallback: ~10 eval points across total training  (PDF p.6) ─
+    # ── EvaluationCallback: ~10 eval points across total training ─
     # n_steps=256 → 1 update per 256 env steps
     # We want ~10 eval checkpoints → eval every total_timesteps / (256 * 10) updates
     updates_per_eval = max(1, total_timesteps // (256 * 10))

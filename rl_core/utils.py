@@ -6,7 +6,7 @@ Shared utilities.  Contains:
   - JudgeChain               : wraps judge prompt + LLM into a callable chain
   - approx_token_count       : lightweight token estimator for retrieved docs
   - format_chunks_for_judge  : truncates docs to 300-char chunks for judge prompt
-  - compute_routing_metrics  : confusion-matrix routing metrics (PDF p.9-10)
+  - compute_routing_metrics  : confusion-matrix routing metrics 
 """
 
 from __future__ import annotations
@@ -277,7 +277,7 @@ def compute_routing_metrics(
     """
     Compute confusion-matrix routing metrics from parallel action / label lists.
 
-    PDF p.9-10 definitions:
+    definitions:
       TP = retrieval chosen  AND retrieval required
       FP = retrieval chosen  BUT skip sufficient
       FN = skip chosen       BUT retrieval required

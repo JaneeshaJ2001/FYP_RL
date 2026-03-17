@@ -55,8 +55,8 @@ def compute_routing_metrics(
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     accuracy = (tp + tn) / total if total > 0 else 0.0
-    unsafe_skip_rate = fn / total if total > 0 else 0.0  # dangerous errors  (PDF p.9)
-    wasteful_retrieve_rate = fp / total if total > 0 else 0.0  # inefficiency      (PDF p.9)
+    unsafe_skip_rate = fn / total if total > 0 else 0.0  # dangerous errors
+    wasteful_retrieve_rate = fp / total if total > 0 else 0.0  # inefficiency
 
     return {
         "TP": tp, "FP": fp, "FN": fn, "TN": tn,
@@ -75,7 +75,7 @@ def compute_routing_metrics(
 
 def heuristic_action(turn: dict, turn_idx: int) -> int:
     """
-    Simple heuristic baseline (PDF p.12):
+    Simple heuristic baseline:
       - Retrieve on first turn (always needs grounding)
       - Retrieve on topic_shift or followup_new (topic changes need new docs)
       - Skip on same-topic follow-ups, clarifications, unanswerable turns
@@ -182,7 +182,7 @@ def run_episode(
             # Only store text when building sample predictions (saves memory)
             "response": response if collect_samples else "",
             "judge_reason": result.get("reason", "") if collect_samples else "",
-            # Scenario metadata — needed for per-scenario breakdown (PDF p.8)
+            # Scenario metadata — needed for per-scenario breakdown
             "scenario_type": turn.get("scenario_type", "unknown"),
             "scenario_name": turn.get("scenario_name", ""),
             "query_type": turn.get("query_type", "unknown"),
@@ -203,9 +203,9 @@ def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
     """
     Aggregate a flat list of turn records into summary metrics.
 
-    PDF p.2 metrics: avg_reward, avg_judge_score, retrieval_rate, unsafe_skip_rate,
+    metrics: avg_reward, avg_judge_score, retrieval_rate, unsafe_skip_rate,
                      wasteful_retrieve_rate
-    PDF p.12: Utility = Q - λC where Q = judge_score/10, C = tokens/1000
+    Utility = Q - λC where Q = judge_score/10, C = tokens/1000
     """
     n = len(all_turns)
     if n == 0:
@@ -292,7 +292,7 @@ class EvaluationCallback(BaseCallback):
     """
     Deterministic validation pass every `eval_every_n_updates` PPO rollouts.
 
-    Logged to TensorBoard and trace_event (PDF p.2 "minimal metric set"):
+    Logged to TensorBoard and trace_event:
       • eval/avg_reward
       • eval/avg_judge_score
       • eval/retrieval_rate
@@ -435,17 +435,17 @@ def evaluate(
       c) Always-Skip     — no retrieval
       d) Heuristic-Router — retrieve on first_turn / topic_shift
 
-    Per strategy (PDF p.7-12):
+    Per strategy:
       avg_judge_score, retrieval_rate, unsafe_skip_rate, wasteful_retrieve_rate,
       avg_tokens, utility (Q - λC), precision, recall, f1, accuracy
 
-    Per-scenario breakdown (PDF p.8): grouped by scenario_type
+    Per-scenario breakdown : grouped by scenario_type
 
-    Saves (PDF p.4):
+    Saves :
       final_evaluation/metrics.json
       final_evaluation/sample_predictions.json  (10 random Policy turns)
 
-    Prints summary table matching PDF p.13.
+    Prints summary table matching.
     """
     from core.graph import build_graph
     from rl_core.utils import JudgeChain
@@ -559,7 +559,6 @@ def evaluate(
 def _build_scenario_table(all_results: dict) -> dict[str, dict]:
     """
     Nested table: scenario_type → strategy → metrics dict.
-    PDF p.8 example table format.
     """
     table: dict[str, dict] = {}
     for strategy_name, res in all_results.items():
@@ -580,7 +579,7 @@ def _build_scenario_table(all_results: dict) -> dict[str, dict]:
 
 def _print_summary_table(all_results: dict):
     """
-    Print the PDF p.13 style comparison table and per-scenario breakdown.
+    Print the style comparison table and per-scenario breakdown.
     """
     strategies = ["Policy", "Always-Retrieve", "Always-Skip", "Heuristic-Router"]
     cols = [
@@ -589,7 +588,7 @@ def _print_summary_table(all_results: dict):
     ]
 
     print("\n" + "═" * 108)
-    print("  EVALUATION SUMMARY  (RL_Research_Evaluation.pdf — Final Results, p.13)")
+    print("  EVALUATION SUMMARY  ")
     print("═" * 108)
     header = f"{'Strategy':<22}" + "".join(f"{c:>18}" for c in cols)
     print(header)
@@ -620,7 +619,7 @@ def _print_summary_table(all_results: dict):
     # Per-scenario table (Policy only)
     scenario_table = all_results.get("scenario_table", {})
     if scenario_table:
-        print("\n  PER-SCENARIO BREAKDOWN  (Policy)  — PDF p.8")
+        print("\n  PER-SCENARIO BREAKDOWN  (Policy) ")
         print("─" * 82)
         print(
             f"{'Scenario':<22}{'n':>6}{'judge':>9}{'ret%':>9}"
@@ -643,7 +642,7 @@ def _print_summary_table(all_results: dict):
     # Confusion-matrix summary for Policy
     if "Policy" in all_results:
         p = all_results["Policy"]
-        print("\n  CONFUSION MATRIX  (Policy)  — PDF p.10")
+        print("\n  CONFUSION MATRIX  (Policy) ")
         print("─" * 42)
         print(f"  {'':30} Retrieval Needed   Skip OK")
         print(f"  {'Retrieve':30} {'TP='+str(p.get('TP','?')):18} {'FP='+str(p.get('FP','?'))}")
