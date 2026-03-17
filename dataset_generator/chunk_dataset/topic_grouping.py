@@ -1,6 +1,5 @@
 import json
-import re
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -89,6 +88,21 @@ TOPIC_MAP = {
         "topic_group": "medical_response",
         "stage": "during_disaster",
     },
+    "infrastructure damage": {
+        "hazard_type": "multi_hazard",
+        "topic_group": "infrastructure_management",
+        "stage": "after_disaster",
+    },
+    "search & rescue logistics": {
+        "hazard_type": "multi_hazard",
+        "topic_group": "logistics_coordination",
+        "stage": "during_disaster",
+    },
+    "community response behavior": {
+        "hazard_type": "multi_hazard",
+        "topic_group": "community_engagement",
+        "stage": "cross_cutting",
+    }
 }
 
 
@@ -96,6 +110,11 @@ def enrich_chunk(chunk: dict) -> tuple[dict, str | None]:
     topic = chunk.get("topic")
 
     mapping = TOPIC_MAP.get(topic)
+    if mapping is None:
+        chunk["hazard_type"] = "unknown"
+        chunk["topic_group"] = "unmapped_topic"
+        chunk["stage"] = "unknown"
+        return chunk, str(topic) if topic is not None else "<missing_topic>"
 
     chunk["hazard_type"] = mapping["hazard_type"]
     chunk["topic_group"] = mapping["topic_group"]
@@ -140,6 +159,7 @@ def main():
     hazard_counter = Counter()
     group_counter = Counter()
     stage_counter = Counter()
+    info_type_counter = Counter()
     combined_counter = Counter()
 
     for chunk in data:
@@ -150,6 +170,7 @@ def main():
         hazard_counter[updated_chunk["hazard_type"]] += 1
         group_counter[updated_chunk["topic_group"]] += 1
         stage_counter[updated_chunk["stage"]] += 1
+        info_type_counter[updated_chunk.get("information_type", "unknown")] += 1
         combined_counter[
             f'{updated_chunk["hazard_type"]} / {updated_chunk["topic_group"]}'
         ] += 1
@@ -166,6 +187,7 @@ def main():
     print_counter("Hazard type distribution", hazard_counter)
     print_counter("Topic group distribution", group_counter)
     print_counter("Stage distribution", stage_counter)
+    print_counter("Information type distribution", info_type_counter)
     print_counter("Hazard / Topic group distribution", combined_counter)
 
     if unmapped_counter:

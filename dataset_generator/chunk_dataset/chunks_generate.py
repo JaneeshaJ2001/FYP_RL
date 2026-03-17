@@ -1,39 +1,37 @@
 """
 SOP Chunk Dataset Generator
-Generates 300 synthetic SOP chunks for RL retrieval-augmented disaster-response research.
 
 Usage:
     pip install openai
     export OPENAI_API_KEY="your-api-key-here"
-    python chunk_dataset/chunks_generate.py
+    python dataset_generator/chunk_dataset/chunks_generate.py
 
 Output:
-    chunk_dataset/sop_chunks.json  — the full knowledge base ready for conversation generation
+    dataset_generator/chunk_dataset/sop_chunks.json  — the full knowledge base ready for conversation generation
 """
 
 import os
 import json
 import time
-import math
 from pathlib import Path
 from openai import OpenAI
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-TOTAL_CHUNKS    = 300
-CHUNKS_PER_CALL = 30          # chunks requested per API call  (10 calls total)
+TOTAL_CHUNKS    = 4
+CHUNKS_PER_CALL = 4          # chunks requested per API call  (10 calls total)
 BASE_DIR        = Path(__file__).resolve().parent
 OUTPUT_FILE     = BASE_DIR / "sop_chunks.json"
-MODEL           = "gpt-4o-mini"    # or "gpt-4o-mini" for lower cost
+MODEL           = "gpt-4o-mini"    # or "gpt-4o"
 MAX_TOKENS      = 8000
 
 TOPICS = [
     "flood preparedness",
-    "flood monitoring",
     "flood safety",
     "flood evacuation",
     "flood rescue operations",
     "post flood recovery",
+    "flood monitoring",
     "landslide risk assessment",
     "landslide warning signs",
     "landslide prevention",
@@ -44,6 +42,9 @@ TOPICS = [
     "general disaster preparedness",
     "emergency shelter",
     "medical emergency",
+    "infrastructure damage",
+    "search & rescue logistics",
+    "community response behavior"
 ]
 
 # Realistic official sources (varied across chunks)
@@ -64,67 +65,199 @@ SOURCES = [
     "ISO 22320 Emergency Management Standard 2024 Implementation Guide",
 ]
 
+INFO_TYPES = [
+    "general_knowledge",
+    "hazard_explanation",
+    "SOP_procedure",
+    "rescue_guideline",
+    "evacuation_plan",
+    "emergency_alert",
+    "medical_protocol",
+    "safety_constraint",
+    "vulnerable_group_guideline",
+    "recovery_plan",
+    "FAQ",
+]
+
+TOPIC_INFO_TYPE_CYCLE = {
+    "flood preparedness": ["general_knowledge", "SOP_procedure", "FAQ"],
+    "flood safety": ["safety_constraint", "general_knowledge", "FAQ"],
+    "flood evacuation": ["evacuation_plan", "emergency_alert", "SOP_procedure"],
+    "flood rescue operations": ["rescue_guideline", "SOP_procedure", "medical_protocol"],
+    "post flood recovery": ["recovery_plan", "FAQ", "general_knowledge"],
+    "flood monitoring": ["hazard_explanation", "emergency_alert"],    "landslide risk assessment": ["hazard_explanation", "SOP_procedure"],
+    "landslide warning signs": ["hazard_explanation", "emergency_alert"],
+    "landslide prevention": ["general_knowledge", "safety_constraint", "SOP_procedure"],
+    "landslide emergency response": ["SOP_procedure", "emergency_alert", "rescue_guideline"],
+    "landslide rescue operations": ["rescue_guideline", "medical_protocol", "SOP_procedure"],
+    "post landslide recovery": ["recovery_plan", "FAQ", "general_knowledge"],
+    "emergency communication": ["emergency_alert", "SOP_procedure"],
+    "general disaster preparedness": ["general_knowledge", "SOP_procedure", "FAQ", "vulnerable_group_guideline"],
+    "emergency shelter": ["SOP_procedure", "vulnerable_group_guideline", "safety_constraint"],
+    "medical emergency": ["medical_protocol", "SOP_procedure", "FAQ"],
+    "infrastructure damage": ["safety_constraint", "recovery_plan"],
+    "search & rescue logistics": ["rescue_guideline", "SOP_procedure"],
+    "community response behavior": ["general_knowledge", "FAQ", "vulnerable_group_guideline", "safety_constraint"],
+}
+
+
+def assign_information_type(topic: str, topic_counter: dict[str, int]) -> str:
+    """Assign deterministic information_type for each chunk based on its topic."""
+    cycle = TOPIC_INFO_TYPE_CYCLE.get(topic, INFO_TYPES)
+    index = topic_counter.get(topic, 0)
+    topic_counter[topic] = index + 1
+    return cycle[index % len(cycle)]
+
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
-def build_prompt(batch_topics: list[dict]) -> str:
+def build_prompt(batch_chunks: list[dict]) -> str:
     """
     Build the generation prompt for a single batch.
 
-    batch_topics: list of {"topic": str, "chunk_ids": [str, ...], "source": str}
+    batch_chunks: list of {
+        "chunk_id": str,
+        "topic": str,
+        "source": str,
+        "information_type": str,
+    }
     """
-    topic_lines = "\n".join(
-        f"  - Topic: \"{t['topic']}\" | IDs: {t['chunk_ids']} | Source: \"{t['source']}\""
-        for t in batch_topics
+    chunk_lines = "\n".join(
+        f"  - Chunk ID: \"{c['chunk_id']}\" | Topic: \"{c['topic']}\" | Source: \"{c['source']}\" | Information Type: \"{c['information_type']}\""
+        for c in batch_chunks
     )
-    chunk_ids_flat = [cid for t in batch_topics for cid in t["chunk_ids"]]
-    n = len(chunk_ids_flat)
+    info_type_lines = "\n".join(f"- {info_type}" for info_type in INFO_TYPES)
+    n = len(batch_chunks)
 
-    return f"""You are an expert synthetic dataset generator disaster-response dialogues.
+    return f"""You are an expert synthetic dataset generator disaster-response knowledge systems.
 
 ## TASK
-Generate exactly {n} high-quality synthetic SOP (Standard Operating Procedure) chunks for a \
-disaster-response knowledge base used by an AI emergency-assistance chatbot. These chunks will serve as the retrieval corpus for a multi-turn conversational AI system assisting people during floods and landslides.
+Generate exactly {n} high-quality knowledge chunks for a disaster-response AI assistant. \
+These chunks will form a retrieval corpus for a multi-turn conversational system. \
+The assistant interacts primarily with civilians during floods and landslides, but also reflects professional disaster-management protocols.
 
-The chatbot will mainly interact with affected civilians, so the procedures must include clear, practical instructions \
-people can follow during emergencies, while still reflecting professional disaster-management protocols used by authorities and responders.
-
-## STRICT REQUIREMENTS
+## STRICT OUTPUT FORMAT
 1. Return ONLY valid JSON — no markdown fences, no explanations, no extra text.
-2. Each chunk must have exactly these four fields and no others:
+2. Each chunk must have exactly these five fields and no others:
    {{
      "chunk_id": "SOP_XXX",
      "text":     "...",
      "topic":    "...",
-     "source":   "..."
+     "source":   "...",
+     "information_type": "..."
    }}
-3. Text length: 150–400 words per chunk. Be precise and detailed — this is real SOP content.
-4. Each chunk must sound like authentic emergency-management SOP documentation used by disaster response agencies.
-- Include: specific actions, practical procedures, safety guidance, operational details Where appropriate, \
-reference realistic elements such as: evacuation timing, water levels or rainfall thresholds, \
-safe distances, required equipment, coordination with authorities, shelter management procedures, communication protocols.
-5. Although these are SOP chunks, they must contain instructions that can guide civilians during disasters, such as:
-- how to evacuate safely
-- how to identify warning signs
-- what to do in shelters
-- how to communicate with emergency responders
-- how to avoid common hazards
-- how to protect children, elderly people, and disabled individuals
-- what to do after the disaster
-Avoid purely administrative procedures that civilians cannot act on.
-6. Each chunk must be: self-contained, internally consistent, focused on a single topic, usable as a stand-alone retrieval unit.
-7. Ensure chunks vary across: preparedness actions, warning signs, evacuation procedures, rescue guidance, shelter safety\
-medical response, recovery steps.
-Do not repeat the same instructions in multiple chunks.
-8. Use the exact chunk_ids, topics, and sources specified below.
+
+## INFORMATION TYPE REQUIREMENT
+Each chunk MUST belong to exactly ONE of the following categories:
+
+{info_type_lines}
+
+## WRITING STYLE RULES (VERY IMPORTANT)
+
+The writing style MUST strictly match the information_type:
+
+1. general_knowledge  
+   - Explanatory, descriptive  
+   - Define concepts clearly  
+   - Example: “A landslide occurs when…”
+
+2. hazard_explanation  
+   - Cause-effect reasoning  
+   - Explain triggers and mechanisms  
+   - Example: rainfall → soil saturation → slope failure  
+
+3. SOP_procedure  
+   - Step-by-step structured instructions  
+   - Include timing, thresholds, coordination  
+
+4. rescue_guideline  
+   - Life-saving actions  
+   - Search, rescue, survival techniques  
+
+5. evacuation_plan  
+   - Clear movement instructions  
+   - Routes, triggers, safe locations  
+
+6. emergency_alert  
+   - Urgent, short, directive  
+   - Warning tone  
+   - Example: “Evacuate immediately…” 
+
+7. medical_protocol  
+   - First aid and medical procedures  
+   - Clear step sequences  
+
+8. safety_constraint  
+   - Focus on what NOT to do  
+   - Prevent common mistakes  
+
+9. vulnerable_group_guideline  
+   - Special instructions for children, elderly, disabled  
+
+10. recovery_plan  
+   - Post-disaster rebuilding and restoration  
+
+11. FAQ  
+   - Short, direct answers to common civilian questions
+
+## CONTENT REQUIREMENTS
+
+1. Length: 200–400 words per chunk  
+2. Each chunk must be:
+   - Self-contained  
+   - Internally consistent  
+   - Focused on a single idea  
+
+3. Must reflect realistic disaster-response knowledge:
+   - Include measurable thresholds (e.g., rainfall levels, water depth)
+   - Mention real-world actions (evacuation timing, equipment, coordination)
+   - Include practical, actionable guidance where applicable  
+
+4. Civilians must be able to understand and use the content  
+5. Avoid purely administrative/internal procedures  
+
+## DIVERSITY REQUIREMENTS
+
+Ensure strong variation across:
+
+- Different information_types
+- Different tones (urgent, explanatory, procedural)
+- Different perspectives (civilian vs responder guidance)
+
+Do NOT repeat similar content across chunks.
+
+## RETRIEVAL-AWARE DESIGN
+
+The dataset must support learning when to retrieve information.
+Therefore:
+- Some chunks should be highly actionable (e.g., evacuation steps)
+- Some should be descriptive (e.g., definitions)
+- Some should be situational (e.g., current conditions)
+- Some should be constraint-based (what NOT to do)
+
+Avoid making all chunks equally procedural.
+
+Use the exact chunk_ids, topics, sources, and information_types specified below.
 
 ## BATCH SPECIFICATION
-{topic_lines}
+{chunk_lines}
+
+Each line specifies:
+- chunk_id
+- topic
+- source
+- information_type
+
+You MUST use the exact values provided.
+
+Additionally:
+- Use the exact information_type assigned to each chunk_id (do not change it)
+- Ensure the text style matches the assigned information_type
 
 ## OUTPUT FORMAT
 Return exactly this JSON structure:
 {{
   "chunks": [
-    {{ "chunk_id": "...", "text": "...", "topic": "...", "source": "..." }},
+    {{ "chunk_id": "...", "text": "...", "topic": "...", "source": "...", "information_type": "..." }},
     ...
   ]
 }}
@@ -135,28 +268,32 @@ Generate all {n} chunks now."""
 # ── Batch planner ──────────────────────────────────────────────────────────────
 
 def plan_batches(total: int, per_call: int) -> list[list[dict]]:
-    """Divide chunk_ids across API calls, distributing topics evenly."""
-    import random, itertools
+    """Divide chunk specs across API calls with deterministic information_type labels."""
+    import itertools
 
     # Assign a topic to each chunk id sequentially (round-robin for even distribution)
     topic_cycle = itertools.cycle(TOPICS)
-    assignments = []  # (chunk_id_str, topic, source)
+    topic_counter: dict[str, int] = {}
+    assignments = []
     for i in range(1, total + 1):
         chunk_id = f"SOP_{i:03d}"
         topic    = next(topic_cycle)
         source   = SOURCES[(i - 1) % len(SOURCES)]
-        assignments.append((chunk_id, topic, source))
+        information_type = assign_information_type(topic, topic_counter)
+        assignments.append(
+            {
+                "chunk_id": chunk_id,
+                "topic": topic,
+                "source": source,
+                "information_type": information_type,
+            }
+        )
 
     # Group into batches
     batches = []
     for batch_start in range(0, total, per_call):
         batch_assignments = assignments[batch_start : batch_start + per_call]
-        # Group by (topic, source) within the batch for the prompt
-        batch_topics = [
-            {"topic": topic, "chunk_ids": [cid], "source": source}
-            for cid, topic, source in batch_assignments
-        ]
-        batches.append(batch_topics)
+        batches.append(batch_assignments)
 
     return batches
 
@@ -201,18 +338,41 @@ def call_gpt(client: OpenAI, prompt: str, batch_num: int) -> list[dict]:
 
 # ── Validator ──────────────────────────────────────────────────────────────────
 
-REQUIRED_FIELDS = {"chunk_id", "text", "topic", "source"}
+REQUIRED_INPUT_FIELDS = {"chunk_id", "text"}
 
-def validate_chunks(chunks: list[dict], expected_ids: set[str]) -> list[dict]:
+def validate_chunks(chunks: list[dict], expected_specs: dict[str, dict]) -> list[dict]:
     valid = []
+    missing_ids = set(expected_specs)
     for c in chunks:
-        if not REQUIRED_FIELDS.issubset(c.keys()):
+        if not REQUIRED_INPUT_FIELDS.issubset(c.keys()):
             print(f"    ⚠  Skipping chunk missing fields: {c.get('chunk_id', '?')}")
             continue
-        word_count = len(c["text"].split())
+
+        chunk_id = str(c["chunk_id"])
+        expected = expected_specs.get(chunk_id)
+        if expected is None:
+            print(f"    ⚠  Unexpected chunk_id {chunk_id} — skipping")
+            continue
+
+        text = str(c["text"]).strip()
+        word_count = len(text.split())
         if word_count < 100:
-            print(f"    ⚠  Chunk {c['chunk_id']} too short ({word_count} words) — keeping anyway")
-        valid.append({k: c[k] for k in REQUIRED_FIELDS})  # drop any extra fields
+            print(f"    ⚠  Chunk {chunk_id} too short ({word_count} words) — keeping anyway")
+
+        valid.append(
+            {
+                "chunk_id": chunk_id,
+                "text": text,
+                "topic": expected["topic"],
+                "source": expected["source"],
+                "information_type": expected["information_type"],
+            }
+        )
+        missing_ids.discard(chunk_id)
+
+    for chunk_id in sorted(missing_ids):
+        print(f"    ⚠  Missing chunk in response: {chunk_id}")
+
     return valid
 
 
@@ -220,14 +380,18 @@ def validate_chunks(chunks: list[dict], expected_ids: set[str]) -> list[dict]:
 
 def build_metadata(chunks: list[dict]) -> dict:
     topic_dist = {}
+    info_type_dist = {}
     total_words = 0
     for c in chunks:
         topic_dist[c["topic"]] = topic_dist.get(c["topic"], 0) + 1
+        info_type = c.get("information_type", "unknown")
+        info_type_dist[info_type] = info_type_dist.get(info_type, 0) + 1
         total_words += len(c["text"].split())
     avg_words = round(total_words / len(chunks)) if chunks else 0
     return {
         "total_chunks": len(chunks),
         "topic_distribution": topic_dist,
+        "information_type_distribution": info_type_dist,
         "average_chunk_length_words": avg_words,
     }
 
@@ -249,9 +413,9 @@ def main():
     all_chunks = []
     seen_ids   = set()
 
-    for batch_num, batch_topics in enumerate(batches, start=1):
-        expected_ids = {cid for t in batch_topics for cid in t["chunk_ids"]}
-        prompt = build_prompt(batch_topics)
+    for batch_num, batch_chunks in enumerate(batches, start=1):
+        expected_specs = {c["chunk_id"]: c for c in batch_chunks}
+        prompt = build_prompt(batch_chunks)
 
         try:
             raw_chunks = call_gpt(client, prompt, batch_num)
@@ -263,7 +427,7 @@ def main():
             print(f"  ✗  API error in batch {batch_num}: {e}")
             raise
 
-        valid = validate_chunks(raw_chunks, expected_ids)
+        valid = validate_chunks(raw_chunks, expected_specs)
 
         # Deduplicate by chunk_id
         for c in valid:
@@ -298,6 +462,9 @@ def main():
     print(f"Topic distribution:")
     for topic, count in sorted(meta["topic_distribution"].items()):
         print(f"  {topic:<35} {count:>3} chunks")
+    print(f"Information type distribution:")
+    for info_type, count in sorted(meta["information_type_distribution"].items()):
+        print(f"  {info_type:<35} {count:>3} chunks")
 
 
 if __name__ == "__main__":
