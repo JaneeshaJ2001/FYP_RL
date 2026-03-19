@@ -55,8 +55,8 @@ def compute_routing_metrics(
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
     accuracy = (tp + tn) / total if total > 0 else 0.0
-    unsafe_skip_rate = fn / total if total > 0 else 0.0  # dangerous errors
-    wasteful_retrieve_rate = fp / total if total > 0 else 0.0  # inefficiency
+    unsafe_skip_rate = fn / total if total > 0 else 0.0
+    wasteful_retrieve_rate = fp / total if total > 0 else 0.0
 
     return {
         "TP": tp, "FP": fp, "FN": fn, "TN": tn,
@@ -118,6 +118,8 @@ def run_episode(
     thread_id = f"eval-{random.randint(0, 10_000_000)}"
     run_config = build_run_config(thread_id)
     turn_records: list[dict] = []
+    turn_number: int = 1
+    prev_action: int = -1   # -1 = no previous turn (first-turn sentinel)
 
     for t_idx, turn in enumerate(episode):
         query = turn["query"]
@@ -125,8 +127,12 @@ def run_episode(
 
         # ── Choose action ──────────────────────────────────────────────────
         if use_policy and model is not None:
-            # use deterministic action selection
-            obs = encode_state(summary, query)
+            obs = encode_state(
+                summary,
+                query,
+                turn_number=turn_number,
+                prev_action=prev_action,
+            )
             action_arr, _ = model.predict(obs, deterministic=True)
             action = int(action_arr)
         elif use_heuristic:
@@ -142,6 +148,8 @@ def run_episode(
             "retrieved_docs": [],
             "answer": "",
             "mode": "baseline",
+            "turn_number": turn_number,
+            "prev_action": prev_action,
         }
         run_config["configurable"]["forced_action"] = action
 
@@ -160,6 +168,8 @@ def run_episode(
         docs = final_state.get("retrieved_docs", [])
         summary = final_state.get("summary", summary)
         tokens = approx_token_count(docs)
+        turn_number = final_state.get("turn_number", turn_number + 1)
+        prev_action = action   # the action just taken becomes prev for next turn
 
         # ── Judge scoring ──────────────────────────────────────────────────
         docs_text = _fmt(docs) if docs else ""
@@ -203,9 +213,10 @@ def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
     """
     Aggregate a flat list of turn records into summary metrics.
 
-    metrics: avg_reward, avg_judge_score, retrieval_rate, unsafe_skip_rate,
-                     wasteful_retrieve_rate
-    Utility = Q - λC where Q = judge_score/10, C = tokens/1000
+    Utility = Q - λC where:
+      Q = avg_judge_score / 10          (normalised quality, range 0-1)
+      C = avg_tokens                    (raw token count from approx_token_count)
+      λ = UTILITY_LAMBDA (= CONFIG.rl_beta = 0.01)
     """
     n = len(all_turns)
     if n == 0:
@@ -226,9 +237,11 @@ def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
     avg_tokens = float(np.mean(tokens))
     avg_latency = float(np.mean(latencies))
 
-    # Utility = Q - λC
+    # Utility uses the same scale as the RL reward.
+    # Q is normalised to 0-1; C is the raw token count.
+    # This makes utility directly comparable to the per-turn reward in training.
     Q = avg_score / 10.0
-    C = avg_tokens / 1000.0
+    C = avg_tokens
     utility = Q - UTILITY_LAMBDA * C
 
     return {
