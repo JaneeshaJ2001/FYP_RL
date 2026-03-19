@@ -22565,7 +22565,6 @@
           "query": "What long-term recovery plans should we consider?",
           "assistant_answer": "Develop a comprehensive recovery plan that includes rebuilding infrastructure with improved resilience and engaging the community to address their needs through the recovery process.",
           "relevant_chunks": [
-            "SOP_723",
             "SOP_838"
           ],
           "retrieval_required": true,
@@ -22839,7 +22838,6 @@
           "query": "What mental health support is available for those affected?",
           "assistant_answer": "Providing mental health support is crucial. Engage with local agencies that can offer counseling, support groups, and mental health resources to help those impacted cope with trauma and stress.",
           "relevant_chunks": [
-            "SOP_843",
             "SOP_653"
           ],
           "retrieval_required": true,
@@ -27075,8 +27073,7 @@
           "query": "What kind of alerts should be issued if flooding conditions are imminent?",
           "assistant_answer": "An emergency alert should be issued when rainfall exceeds critical levels or if water levels rise unexpectedly. This alert must include evacuation orders and details about safety measures to avoid flooding. It's crucial to keep local media channels open for ongoing updates.",
           "relevant_chunks": [
-            "SOP_367",
-            "SOP_463"
+            "SOP_367"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -27094,8 +27091,7 @@
           "query": "Can you explain how continuous monitoring can improve flood response?",
           "assistant_answer": "Continuous monitoring aids in understanding flood risks and enables timely warnings for evacuations. It helps in issuing alerts before conditions worsen by assessing local weather and river gauges. Early response can minimize damage and save lives.",
           "relevant_chunks": [
-            "SOP_529",
-            "SOP_565"
+            "SOP_529"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -33940,8 +33936,7 @@
           "query": "What psychological support should be provided after a flood?",
           "assistant_answer": "Providing psychological support to affected individuals is important to address trauma. Outreach programs can help foster community healing and provide necessary support services.",
           "relevant_chunks": [
-            "SOP_269",
-            "SOP_329"
+            "SOP_269"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -38334,7 +38329,6 @@
           "query": "What should I do if I notice these signs?",
           "assistant_answer": "You should alert local authorities immediately and monitor water levels in case of excessive rainfall. It’s important to evacuate the area if you see any signs of a landslide.",
           "relevant_chunks": [
-            "SOP_495",
             "SOP_417"
           ],
           "retrieval_required": true,
@@ -43065,8 +43059,7 @@
           "query": "Can you provide more details on how to assist a person in distress in floodwaters?",
           "assistant_answer": "When rescuing individuals in distress in floodwaters, always approach them from an upstream position using flotation devices. Assure them of their safety, and if trapped in a vehicle, signal emergency services instead of moving them unless they are in imminent danger. Use ropes or poles to assist them in reaching safety.",
           "relevant_chunks": [
-            "SOP_274",
-            "SOP_022"
+            "SOP_274"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -44540,7 +44533,6 @@
           "query": "What steps are involved in the recovery process?",
           "assistant_answer": "The recovery process following a landslide involves stages like immediate stabilization, thorough damage assessments, and ongoing community support. Community engagement is crucial for rebuilding efforts.",
           "relevant_chunks": [
-            "SOP_648",
             "SOP_778"
           ],
           "retrieval_required": true,
@@ -45658,7 +45650,6 @@
           "query": "What steps should be taken if a victim has a spinal injury?",
           "assistant_answer": "If a victim may have a spinal injury, it is important to avoid moving them unless they are in imminent danger. Instead, focus on stabilizing them until additional help can arrive.",
           "relevant_chunks": [
-            "SOP_202",
             "SOP_256"
           ],
           "retrieval_required": true,
@@ -47548,7 +47539,6 @@
           "query": "Can you tell me what to include in my emergency kit for floods?",
           "assistant_answer": "Your emergency kit should contain essentials such as food, water, a flashlight, a first aid kit, medications, and important documents. If time permits, turn off utilities before leaving.",
           "relevant_chunks": [
-            "SOP_201",
             "SOP_285"
           ],
           "retrieval_required": true,
@@ -47567,8 +47557,7 @@
           "query": "What should I do after I evacuate?",
           "assistant_answer": "After evacuating, move to designated emergency shelters or higher ground as directed by authorities. Stay tuned to local weather updates for safety information and remain available for further communication regarding safety protocols.",
           "relevant_chunks": [
-            "SOP_249",
-            "SOP_285"
+            "SOP_249"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -52292,7 +52281,6 @@
           "query": "What are the main steps to start the recovery process?",
           "assistant_answer": "Start by assessing community needs with local participation. Prioritize rebuilding efforts, include mental health support for those affected, and ensure to adopt sustainable practices in the recovery plan.",
           "relevant_chunks": [
-            "SOP_678",
             "SOP_658"
           ],
           "retrieval_required": true,
@@ -54372,7 +54360,6 @@
           "query": "How do we start the long-term recovery after the flood?",
           "assistant_answer": "Long-term recovery should focus on rebuilding infrastructure, housing, and community services, emphasizing resilience against future floods. Psychological support and community input are also vital in this phase.",
           "relevant_chunks": [
-            "SOP_005",
             "SOP_341",
             "SOP_041"
           ],
@@ -55943,7 +55930,6 @@
           "query": "What should I include in my emergency kit for floods?",
           "assistant_answer": "An emergency kit for floods should include vital supplies such as food, water, medications, and first aid items. It's also important to have a flashlight, batteries, and important documents. Ensuring you are prepared ahead of time will be beneficial.",
           "relevant_chunks": [
-            "SOP_350",
             "SOP_008"
           ],
           "retrieval_required": true,
@@ -58790,7 +58776,6 @@
           "query": "Can you tell me more about how to prepare my home before a flood?",
           "assistant_answer": "Before a flood, ensure your home has a means of emergency communication, like a battery-powered radio. It's also wise to turn off utilities if flooding threatens, and keep essential supplies ready. Regularly receiving community updates can be vital.",
           "relevant_chunks": [
-            "SOP_224",
             "SOP_526"
           ],
           "retrieval_required": true,
@@ -59588,8 +59573,7 @@
           "query": "Can you provide guidance on evacuation routes?",
           "assistant_answer": "In a landslide situation, it's essential to identify safe evacuation routes away from the most vulnerable areas. Ensure you follow established evacuation routes, as indicated by local advisories, and communicate with emergency services for the latest updates on the safety of these routes.",
           "relevant_chunks": [
-            "SOP_681",
-            "SOP_781"
+            "SOP_681"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -62387,7 +62371,6 @@
           "query": "How do I safely evacuate during a flood?",
           "assistant_answer": "To safely evacuate during a flood, follow designated evacuation routes, avoid roads with standing water, and never attempt to drive through floodwaters. Keep your emergency kit with you, and listen to local officials for updates.",
           "relevant_chunks": [
-            "SOP_191",
             "SOP_287"
           ],
           "retrieval_required": true,
@@ -63163,8 +63146,7 @@
           "query": "What are the evacuation steps during a flood?",
           "assistant_answer": "For effective evacuation during a flood, you should heed the evacuation orders promptly, safely store important documents, move to designated safe areas or higher ground, and register with local authorities at your safe zone for family reunification.",
           "relevant_chunks": [
-            "SOP_075",
-            "SOP_087"
+            "SOP_075"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -64437,7 +64419,6 @@
           "query": "What should I do if I'm instructed to evacuate?",
           "assistant_answer": "If you're instructed to evacuate, gather only essential supplies, including your identification and medications, and head to the nearest designated evacuation site. Avoid driving through floodwaters, as this can be very dangerous.",
           "relevant_chunks": [
-            "SOP_439",
             "SOP_436"
           ],
           "retrieval_required": true,
@@ -65636,7 +65617,6 @@
           "query": "How do I safely evacuate during a landslide?",
           "assistant_answer": "To safely evacuate during a landslide, follow the established evacuation routes and avoid areas that are prone to sliding. Stay informed through local alerts, and always prioritize moving to higher ground.",
           "relevant_chunks": [
-            "SOP_636",
             "SOP_616"
           ],
           "retrieval_required": true,
@@ -66417,8 +66397,7 @@
           "query": "What steps should I take for evacuation if that time comes?",
           "assistant_answer": "If you are required to evacuate, first follow local alerts. Take only essential items, inform a family member or friend of your whereabouts, and use designated evacuation routes leading to higher ground. Ensure you have your emergency kit prepared.",
           "relevant_chunks": [
-            "SOP_117",
-            "SOP_321"
+            "SOP_117"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -68391,7 +68370,6 @@
           "query": "How should I evacuate people safely during a flood?",
           "assistant_answer": "For safe evacuation during a flood, it is essential to approach from an upstream position and engage survivors using flotation devices. Provide them with safety instructions and immediate medical assistance if necessary.",
           "relevant_chunks": [
-            "SOP_274",
             "SOP_352"
           ],
           "retrieval_required": true,
@@ -72834,7 +72812,6 @@
           "query": "If I see these warning signs, how should I evacuate?",
           "assistant_answer": "If you observe warning signs of a landslide, evacuate immediately. Follow designated evacuation routes, and ensure you offer assistance to vulnerable individuals in your community.",
           "relevant_chunks": [
-            "SOP_585",
             "SOP_958"
           ],
           "retrieval_required": true,
@@ -74527,7 +74504,6 @@
           "query": "What should I do if I'm in an at-risk area during a landslide?",
           "assistant_answer": "If you're in an at-risk area during a landslide, evacuate immediately to higher ground, avoiding blocked roads. Follow designated evacuation routes and assist others in need.",
           "relevant_chunks": [
-            "SOP_831",
             "SOP_736"
           ],
           "retrieval_required": true,
@@ -74670,7 +74646,6 @@
           "query": "What should I do if I notice these warning signs?",
           "assistant_answer": "If you notice any of the warning signs, you should immediately alert local authorities for investigation and take necessary precautions to ensure safety.",
           "relevant_chunks": [
-            "SOP_381",
             "SOP_573"
           ],
           "retrieval_required": true,
@@ -75945,7 +75920,6 @@
           "query": "If a landslide occurs, what should I do to evacuate safely?",
           "assistant_answer": "If a landslide occurs, prioritize your safety by evacuating immediately to higher ground. Avoid areas near steep slopes and stay clear of any roads and structures that may be impacted. Look for updates from local authorities on safe routes and further instructions.",
           "relevant_chunks": [
-            "SOP_606",
             "SOP_816"
           ],
           "retrieval_required": true,
@@ -78887,7 +78861,6 @@
           "query": "What signs should I look for to know if a landslide might happen?",
           "assistant_answer": "Look for signs of instability, such as cracks in the ground, changes in water flow, or excessive rainfall. If conditions seem unsafe, be prepared to evacuate.",
           "relevant_chunks": [
-            "SOP_871",
             "SOP_721"
           ],
           "retrieval_required": true,
@@ -83065,8 +83038,7 @@
           "query": "What community actions can we take to prevent landslides?",
           "assistant_answer": "Communities can conduct engineering assessments on steep slopes, engage in vegetation restoration projects, and maintain drainage systems to prevent water accumulation. Regular discussions about landslide risks and community awareness programs are also vital for prevention.",
           "relevant_chunks": [
-            "SOP_180",
-            "SOP_144"
+            "SOP_180"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -83393,8 +83365,7 @@
           "query": "What about support for families?",
           "assistant_answer": "Support for families during recovery can include financial aid, counseling services, and access to local recovery resources. Engaging community members in discussions about rebuilding priorities is also crucial.",
           "relevant_chunks": [
-            "SOP_311",
-            "SOP_125"
+            "SOP_311"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -83420,8 +83391,7 @@
           "query": "What should we do if our home is severely damaged?",
           "assistant_answer": "If your home is severely damaged, you should first document the damage and contact your insurance provider. It's also crucial to engage with local recovery agencies for assistance and support in rebuilding your home with resilience in mind.",
           "relevant_chunks": [
-            "SOP_353",
-            "SOP_311"
+            "SOP_353"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -83633,7 +83603,6 @@
           "query": "What tools are needed for rescue operations?",
           "assistant_answer": "During flood rescue operations, proper personal protective equipment (PPE) should be used. Adequate flotation devices, ropes, and signaling equipment are also crucial. These tools help ensure the safety of rescuers and the effective rescue of individuals in need.",
           "relevant_chunks": [
-            "SOP_172",
             "SOP_046"
           ],
           "retrieval_required": true,
@@ -84742,8 +84711,7 @@
           "query": "What about children in this situation?",
           "assistant_answer": "In flood rescues involving children, make sure to give them clear and calming instructions on how to assist in their rescue. Also, ensure that their hydration and warmth are prioritized, as stated in the medical protocol for rescue operations.",
           "relevant_chunks": [
-            "SOP_160",
-            "SOP_166"
+            "SOP_160"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -85049,7 +85017,6 @@
           "query": "What long-term measures should we take?",
           "assistant_answer": "Consider incorporating green infrastructure or sustainable practices in rebuilding communities. Engaging local stakeholders in planning will help establish a shared vision for recovery. Continuous assessment and adjustment of recovery plans is necessary based on community feedback.",
           "relevant_chunks": [
-            "SOP_678",
             "SOP_823"
           ],
           "retrieval_required": true,
@@ -85193,8 +85160,7 @@
           "query": "What should we do if we see cracks appearing?",
           "assistant_answer": "If you witness signs of slope instability, such as cracking soil or fallen trees, alert authorities immediately. These signals are concerning and require prompt action to prevent potential landslides.",
           "relevant_chunks": [
-            "SOP_174",
-            "SOP_198"
+            "SOP_174"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -86261,7 +86227,6 @@
           "query": "What are some common recovery plans for landslides?",
           "assistant_answer": "Recovery plans for landslides typically include immediate assessments of damage, consultations with affected communities, and restoration of essential services. Engaging locals in recovery efforts is vital.",
           "relevant_chunks": [
-            "SOP_633",
             "SOP_748"
           ],
           "retrieval_required": true,
@@ -87718,8 +87683,7 @@
           "query": "What about children?",
           "assistant_answer": "Children, like all individuals during a flood, should be kept away from floodwaters and electrical equipment that may be submerged. They should stay in a safe area, ideally where they will be monitored closely until professional help arrives if they are injured.",
           "relevant_chunks": [
-            "SOP_068",
-            "SOP_218"
+            "SOP_068"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -87859,7 +87823,6 @@
           "query": "What if there are children involved?",
           "assistant_answer": "Involving children in flood preparedness means ensuring they understand safety protocols. Monitor conditions closely and communicate any evacuation plans to families.",
           "relevant_chunks": [
-            "SOP_577",
             "SOP_493"
           ],
           "retrieval_required": true,
@@ -89229,7 +89192,6 @@
           "query": "What kind of equipment should we have ready for rescue?",
           "assistant_answer": "Responders should be equipped with tools such as ropes, shovels, and medical kits. It's also vital to have trained personnel forming teams to systematically search affected areas, ensuring communication with command throughout the rescue operation.",
           "relevant_chunks": [
-            "SOP_701",
             "SOP_384"
           ],
           "retrieval_required": true,
@@ -89274,7 +89236,6 @@
           "query": "What about children in this situation?",
           "assistant_answer": "It's crucial to ensure that children are moved to safety as soon as possible during a flash flood warning. Make sure they understand the importance of following evacuation procedures and have a safe place to go.",
           "relevant_chunks": [
-            "SOP_451",
             "SOP_589"
           ],
           "retrieval_required": true,
@@ -89301,7 +89262,6 @@
           "query": "What kind of monitoring should I be aware of?",
           "assistant_answer": "Monitoring for floods includes analyzing rainfall data, river gauge readings, and local soil conditions. Regular updates from local meteorologists provide critical information to minimize risk.",
           "relevant_chunks": [
-            "SOP_589",
             "SOP_397"
           ],
           "retrieval_required": true,
@@ -89521,7 +89481,6 @@
           "query": "What supplies should we pack?",
           "assistant_answer": "You should pack water, non-perishable food, medications, a flashlight, batteries, and a battery-operated radio. It's also good to have personal documents and a first aid kit ready. Make sure to tailor your emergency supply kit to include necessities for all family members, including children.",
           "relevant_chunks": [
-            "SOP_103",
             "SOP_073"
           ],
           "retrieval_required": true,
@@ -90156,8 +90115,7 @@
           "query": "What else should I include in the emergency kit?",
           "assistant_answer": "An emergency kit should include water, non-perishable food, medications, important documents, a flashlight with extra batteries, a first aid kit, and any items specific to your family’s needs, like baby supplies. Also, consider adding a whistle to signal for help and a dust mask to help filter contaminated air.",
           "relevant_chunks": [
-            "SOP_271",
-            "SOP_163"
+            "SOP_271"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -91573,7 +91531,6 @@
           "query": "What emergency alerts should we be aware of?",
           "assistant_answer": "If flooding is imminent and waters are expected to rise more than 6 inches within a few hours, an emergency alert should be issued. Residents should evacuate immediately to designated shelters and receive consistent updates on water levels and shelter availability.",
           "relevant_chunks": [
-            "SOP_475",
             "SOP_403"
           ],
           "retrieval_required": true,
@@ -92282,7 +92239,6 @@
           "query": "What are the steps for recovery after a landslide?",
           "assistant_answer": "The recovery process following a landslide includes various stages: immediate stabilization, damage assessment, and community support. After ensuring safety, conduct a comprehensive damage assessment to evaluate the infrastructure, environment, and community impact. Prioritize restoring essential services such as water, electricity, and medical assistance while engaging the community in recovery efforts.",
           "relevant_chunks": [
-            "SOP_648",
             "SOP_658"
           ],
           "retrieval_required": true,
@@ -92468,8 +92424,7 @@
           "query": "What about children?",
           "assistant_answer": "For children, it's important to keep them away from floodwaters and ensure they understand the safety instructions. Have a plan to keep them informed and secure during the emergency.",
           "relevant_chunks": [
-            "SOP_272",
-            "SOP_086"
+            "SOP_272"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -92540,7 +92495,6 @@
           "query": "What about children in these situations?",
           "assistant_answer": "It's crucial to provide mental health support tailored for children, as they may experience trauma differently. Involve community leaders to ensure that recovery efforts consider the specific needs of children affected by the landslide.",
           "relevant_chunks": [
-            "SOP_843",
             "SOP_748"
           ],
           "retrieval_required": true,
@@ -92567,7 +92521,6 @@
           "query": "Can you tell me how to engage with the community during recovery?",
           "assistant_answer": "Engaging community members is vital. This includes organizing meetings to discuss recovery plans, involving children in supportive activities, and ensuring mental health resources are available for everyone.",
           "relevant_chunks": [
-            "SOP_748",
             "SOP_911"
           ],
           "retrieval_required": true,
@@ -95253,7 +95206,6 @@
           "query": "What are some specific measures for psychological support?",
           "assistant_answer": "Psychological support measures can include community counseling sessions, workshops for emotional resilience, and providing resources for affected families to cope with trauma. Ensuring community participation in these initiatives is key.",
           "relevant_chunks": [
-            "SOP_738",
             "SOP_798"
           ],
           "retrieval_required": true,
@@ -95439,7 +95391,6 @@
           "query": "What about children?",
           "assistant_answer": "When flooding occurs, keep children safe by ensuring they stay indoors and away from windows. Always follow the safety constraints for flooding which includes avoiding flooded areas and not letting children play outside during heavy rains.",
           "relevant_chunks": [
-            "SOP_038",
             "SOP_272"
           ],
           "retrieval_required": true,
@@ -96361,7 +96312,6 @@
           "query": "What about children?",
           "assistant_answer": "It's crucial to ensure the safety of children during a flood. They should be kept away from flooded areas, and it's important to have a safety plan that includes them. Make sure they understand the dangers of floodwaters.",
           "relevant_chunks": [
-            "SOP_302",
             "SOP_044"
           ],
           "retrieval_required": true,
@@ -96955,7 +96905,6 @@
           "query": "What supplies should be in an emergency kit?",
           "assistant_answer": "An emergency kit should include vital supplies such as food, water, medications, a flashlight, batteries, and a first aid kit. Having these items ready can significantly help during a flood emergency.",
           "relevant_chunks": [
-            "SOP_350",
             "SOP_134"
           ],
           "retrieval_required": true,
@@ -99004,7 +98953,6 @@
           "query": "What kind of community support should be offered to those affected?",
           "assistant_answer": "Community support should focus on mental health and emotional healing, alongside practical recovery efforts. This includes providing access to essential services and engaging community members in the planning process to ensure their voices are heard in the recovery plan.",
           "relevant_chunks": [
-            "SOP_883",
             "SOP_663"
           ],
           "retrieval_required": true,
@@ -99715,7 +99663,6 @@
           "query": "Can you tell me more about what to do during a flood event?",
           "assistant_answer": "It's important to stay tuned for updates from local authorities during a flood. If flooding is imminent, you will receive emergency alerts through local media and social media. You should evacuate to higher ground immediately if advised and avoid traveling through floodwaters. Keep emergency contact numbers handy to communicate with responders about your location and any hazards.",
           "relevant_chunks": [
-            "SOP_571",
             "SOP_391"
           ],
           "retrieval_required": true,
@@ -99776,7 +99723,6 @@
           "query": "What should I do if I see someone trapped after a landslide?",
           "assistant_answer": "It is essential to assess the site for risks and to communicate with emergency services for guidance; however, I cannot provide exact local instructions.",
           "relevant_chunks": [
-            "SOP_642",
             "SOP_707"
           ],
           "retrieval_required": true,
@@ -102398,7 +102344,6 @@
           "query": "What are the important things to know for returning home after a landslide?",
           "assistant_answer": "Until officials indicate the area is safe, stay in designated shelters. Check for structural damage before re-entering.",
           "relevant_chunks": [
-            "SOP_638",
             "SOP_863"
           ],
           "retrieval_required": true,
@@ -102540,7 +102485,6 @@
           "query": "How do I prepare for possible landslide evacuation?",
           "assistant_answer": "Have an evacuation plan ready, noting routes and local resources. Follow instructions from authorities on when to evacuate.",
           "relevant_chunks": [
-            "SOP_560",
             "SOP_429"
           ],
           "retrieval_required": true,
@@ -103676,8 +103620,7 @@
           "query": "What steps can we take to engage the community in recovery planning?",
           "assistant_answer": "Engaging the community involves assessing needs and establishing a committee to prioritize restoration efforts. It's crucial to include local stakeholders in the planning process to create a shared vision of recovery. This collaborative approach can help ensure all voices are heard.",
           "relevant_chunks": [
-            "SOP_738",
-            "SOP_678"
+            "SOP_738"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -106992,7 +106935,6 @@
           "query": "Can you remind me how to evacuate during a landslide?",
           "assistant_answer": "During a landslide evacuation, prioritize safety, avoid travel through dangerous areas, and stay clear of potential slide zones. Follow established evacuation protocols and the guidance of local authorities.",
           "relevant_chunks": [
-            "SOP_429",
             "SOP_916"
           ],
           "retrieval_required": true,
@@ -107134,7 +107076,6 @@
           "query": "Can you give me flood preparedness tips?",
           "assistant_answer": "Yes, familiarize yourself with flood risks in your area, stock up on emergency supplies, and stay informed through local alerts and weather forecasts.",
           "relevant_chunks": [
-            "SOP_145",
             "SOP_091"
           ],
           "retrieval_required": true,
@@ -111720,7 +111661,6 @@
           "query": "What should I do if I notice a landslide risk in my area?",
           "assistant_answer": "If you notice signs of an impending landslide, the best approach is to contact local emergency services for guidance. Community members should also be educated on signs indicating an approaching landslide.",
           "relevant_chunks": [
-            "SOP_852",
             "SOP_477"
           ],
           "retrieval_required": true,
@@ -112429,7 +112369,6 @@
           "query": "What do I need to bring to a shelter?",
           "assistant_answer": "When going to a shelter after a flood, make sure to gather essential items like medications and important documents. Also, prioritize your health and safety.",
           "relevant_chunks": [
-            "SOP_317",
             "SOP_251"
           ],
           "retrieval_required": true,
@@ -114317,7 +114256,6 @@
           "query": "What should I do if I notice signs of a landslide?",
           "assistant_answer": "If you notice signs of a landslide, you should communicate risks to local residents and ensure that the community is informed about these hazards. However, I do not have local protocols for immediate response.",
           "relevant_chunks": [
-            "SOP_471",
             "SOP_825"
           ],
           "retrieval_required": true,
@@ -114531,8 +114469,7 @@
           "query": "What safety measures should rescue teams take during operations?",
           "assistant_answer": "Rescue teams should assess scene safety, use ropes on steep terrain, and prioritize personnel safety. However, I can't provide specific local procedures.",
           "relevant_chunks": [
-            "SOP_450",
-            "SOP_602"
+            "SOP_450"
           ],
           "retrieval_required": true,
           "query_type": "partial_answer"
@@ -115669,8 +115606,7 @@
           "query": "What should I do in a landslide if my area is affected?",
           "assistant_answer": "If your area is affected by a landslide, evacuate immediately if you are in a lane, seek higher ground, and avoid all roads that may be blocked by debris. Follow local emergency plans and alert the public about the situation.",
           "relevant_chunks": [
-            "SOP_716",
-            "SOP_811"
+            "SOP_716"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -115814,7 +115750,6 @@
           "query": "What can communities do to aid recovery efforts?",
           "assistant_answer": "Communities can organize recovery efforts by participating in meetings to voice their needs and perspectives for the recovery strategy. Additionally, engage with local agencies for additional support.",
           "relevant_chunks": [
-            "SOP_653",
             "SOP_965"
           ],
           "retrieval_required": true,
@@ -115960,8 +115895,7 @@
           "query": "What should I do if floodwaters are starting to rise?",
           "assistant_answer": "If floodwaters are rapidly rising, you must evacuate immediately to higher ground. Follow routes provided by emergency services and do not wait to gather belongings if conditions are deteriorating.",
           "relevant_chunks": [
-            "SOP_135",
-            "SOP_367"
+            "SOP_135"
           ],
           "retrieval_required": true,
           "query_type": "followup_new"
@@ -116472,7 +116406,6 @@
           "query": "What are the rescue operations like during a flood?",
           "assistant_answer": "During a flood, rescue operations involve assessing the scene for safety, utilizing boats and flotation devices to reach stranded individuals, and establishing communication with emergency services. It is crucial to prioritize the extraction of injured individuals and provide first aid until medical help arrives.",
           "relevant_chunks": [
-            "SOP_004",
             "SOP_088"
           ],
           "retrieval_required": true,
@@ -116483,7 +116416,6 @@
           "query": "How should we handle medical emergencies during rescue operations?",
           "assistant_answer": "In medical emergencies during rescue operations, check for airway obstruction first. If a person is unconscious, perform CPR immediately. Treat any wounds and ensure professional medical support is on the way. Providing emotional support is also crucial for victims affected by the disaster.",
           "relevant_chunks": [
-            "SOP_088",
             "SOP_214"
           ],
           "retrieval_required": true,
@@ -117678,7 +117610,6 @@
           "query": "What are the steps for recovery after the flood?",
           "assistant_answer": "Post-flood recovery involves several steps: ensure clean water and sanitation, assess property damages and document losses for insurance, and engage with community recovery meetings. It’s essential to collaboratively work on rebuilding efforts to incorporate resilience against future floods.",
           "relevant_chunks": [
-            "SOP_275",
             "SOP_239"
           ],
           "retrieval_required": true,
@@ -118938,8 +118869,7 @@
           "query": "How can we recover after a landslide?",
           "assistant_answer": "Recovery after a landslide should start with assessing the damage and stabilizing unstable slopes. Engage the community in rebuilding efforts, prioritize local needs, and foster partnerships with NGOs to support reconstruction. Establish a long-term monitoring program to ensure safety and environmental sustainability.",
           "relevant_chunks": [
-            "SOP_618",
-            "SOP_763"
+            "SOP_618"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -122651,8 +122581,7 @@
           "query": "What steps should rescuer teams take during a landslide rescue?",
           "assistant_answer": "Rescue teams should assess the environment for safety, deploy search teams with proper gear, and utilize advanced technology to locate survivors.",
           "relevant_chunks": [
-            "SOP_647",
-            "SOP_852"
+            "SOP_647"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -123631,8 +123560,7 @@
           "query": "What should happen during the recovery phase after a landslide?",
           "assistant_answer": "After a landslide, recovery efforts should focus on rebuilding community infrastructure, assessing damage, and restoring services. Community resources such as shelters and food distribution must be established. Engaging with the community to prioritize needs based on shared experiences is vital, along with addressing emotional impacts and mental health support.",
           "relevant_chunks": [
-            "SOP_803",
-            "SOP_718"
+            "SOP_803"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -127923,7 +127851,6 @@
           "query": "What should I do to evacuate safely if a landslide is happening?",
           "assistant_answer": "If you are in a landslide-affected area, evacuate immediately! Seek higher ground, avoid areas that may be blocked by debris, and follow designated evacuation routes. It's important to assist others who may need help during the evacuation process.",
           "relevant_chunks": [
-            "SOP_831",
             "SOP_736"
           ],
           "retrieval_required": true,
@@ -129711,7 +129638,6 @@
           "query": "If a landslide happens, what should we do for evacuation?",
           "assistant_answer": "If a landslide occurs, immediately evacuate to higher ground and away from potential slide zones. Stay clear of any roads and structures that may be affected. Make sure to follow local authorities' instructions for safe evacuation.",
           "relevant_chunks": [
-            "SOP_606",
             "SOP_816"
           ],
           "retrieval_required": true,
@@ -129732,7 +129658,6 @@
           "query": "What should we do once the landslide is over?",
           "assistant_answer": "After a landslide, ensure that the area is assessed for safety before returning. Follow directions from local authorities and be cautious of further risks. Document your observations and actions, as this can aid in recovery and improvement for future responses.",
           "relevant_chunks": [
-            "SOP_796",
             "SOP_510"
           ],
           "retrieval_required": true,
@@ -130253,8 +130178,7 @@
           "query": "What are the best practices for recovery after a landslide?",
           "assistant_answer": "Best practices for recovery after a landslide include developing a recovery plan that engages community input, assessing the damage thoroughly, and rebuilding with resilience in mind. It's essential to prioritize infrastructure improvements that meet the needs of residents and ensure compliance with updated safety codes.",
           "relevant_chunks": [
-            "SOP_798",
-            "SOP_738"
+            "SOP_798"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -130548,8 +130472,7 @@
           "query": "What happens after the landslide when it comes to recovery?",
           "assistant_answer": "Recovery from a landslide involves a multi-phase approach focused on providing humanitarian assistance to affected communities, followed by rebuilding infrastructure like roads and homes. Additionally, community healing through support events and counseling services is critical.",
           "relevant_chunks": [
-            "SOP_813",
-            "SOP_688"
+            "SOP_813"
           ],
           "retrieval_required": true,
           "query_type": "topic_shift"
@@ -222195,7 +222118,6 @@
           "query": "Can you list the prioritized actions for a successful rescue?",
           "assistant_answer": "Prioritize the following actions: quickly survey for visibly trapped survivors, use appropriate tools like shovels and ropes, communicate clearly with trapped individuals, evacuate them safely, and provide first aid as needed.",
           "relevant_chunks": [
-            "SOP_602",
             "SOP_602"
           ],
           "retrieval_required": true,
