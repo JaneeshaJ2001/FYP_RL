@@ -28,26 +28,6 @@ logger = logging.getLogger("disaster_chatbot")
 
 # ==============================================================================
 # JUDGE PROMPT  —  Grounded-Summary-Aware
-#
-# Five scoring criteria (each contributes to ONE overall integer score 0-10):
-#
-#   1. Relevance     — does the answer address the current query?
-#   2. Correctness   — is it factually accurate given available information?
-#   3. Groundedness  — is it supported by the available evidence?
-#                      * action=retrieve : must use retrieved chunks
-#                      * action=skip     : may rely on conversation summary;
-#                        prior grounded knowledge IS valid — never penalise
-#                        a skip just because no new retrieval happened.
-#   4. Completeness  — did it give enough actionable information?
-#   5. Scope handling— out-of-scope / unanswerable → politely decline + hotline,
-#                      never hallucinate.
-#
-# Score bands:
-#   0-2  = wrong / unsafe / hallucinated
-#   3-4  = poor (major omissions or errors)
-#   5-6  = acceptable (correct but shallow)
-#   7-8  = good (solid, well-grounded answer)
-#   9-10 = excellent (complete, precise, perfectly grounded)
 # ==============================================================================
 
 _JUDGE_PROMPT_TEMPLATE = """\
@@ -133,7 +113,7 @@ Output ONLY valid JSON on a single line — no markdown, no preamble, no trailin
 
 JUDGE_PROMPT = ChatPromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
 
-# Static scope reminder injected into every judge call — callers never override this
+# Static scope reminder injected into every judge call — callers must never override this.
 _SCOPE_REMINDER = (
     "This assistant ONLY supports floods and landslides. "
     "It must NEVER hallucinate or answer questions outside this domain. "
@@ -182,17 +162,10 @@ class JudgeChain:
                                      turns; pass "" or omit entirely for skip turns
         response            : str  — assistant answer this turn
 
-    Auto-injected (never pass manually):
+    Auto-injected (never settable by callers):
         scope_reminder      : str  — always _SCOPE_REMINDER
 
     Returns: {"score": int (0-10), "reason": str}
-
-    Score bands:
-        0-2  = wrong / unsafe / hallucinated
-        3-4  = poor
-        5-6  = acceptable
-        7-8  = good
-        9-10 = excellent
     """
 
     def __init__(self):
@@ -200,13 +173,14 @@ class JudgeChain:
         self._chain = JUDGE_PROMPT | llm | StrOutputParser()
 
     def invoke(self, inputs: dict[str, str]) -> dict[str, Any]:
-        """Return parsed JSON dict with 'score' (int 0-10) and 'reason' (str)."""
-        # Always inject static scope reminder — cannot be overridden by callers
-        full_inputs = {
-            "scope_reminder": _SCOPE_REMINDER,
-            **inputs,
-        }
-        # Ensure retrieved_chunks has a safe default for skip turns
+        """Return parsed JSON dict with 'score' (int 0-10) and 'reason' (str).
+        """
+        full_inputs = dict(inputs)  # shallow copy — don't mutate caller's dict
+
+        # Force-set AFTER copying so this key always wins over any caller value.
+        full_inputs["scope_reminder"] = _SCOPE_REMINDER
+
+        # Ensure retrieved_chunks has a safe default for skip turns.
         if not full_inputs.get("retrieved_chunks"):
             full_inputs["retrieved_chunks"] = "No retrieval performed"
 
@@ -219,7 +193,6 @@ def _parse_judge_output(raw: str) -> dict[str, Any]:
     text = re.sub(r"```(?:json)?|```", "", raw).strip()
     try:
         data  = json.loads(text)
-        # Score range is 0-10
         score = max(0, min(10, int(data.get("score", 5))))
         return {"score": score, "reason": data.get("reason", "")}
     except Exception:
