@@ -33,8 +33,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import random
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -66,6 +68,10 @@ REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_EPISODES_PATH = (
     REPO_ROOT / "dataset_generator" / "dialog_dataset" / "conversations.json"
 )
+
+# Any scenario group with fewer episodes than this cannot produce meaningful
+# val and test cells — those episodes go entirely into train.
+_MIN_EPISODES_TO_SPLIT = 30
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -173,24 +179,154 @@ def load_episodes(path: str) -> list[list[dict]]:
     return episodes
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# split_episodes  — three-way, stratified by scenario_type
+# ──────────────────────────────────────────────────────────────────────────────
+
 def split_episodes(
     episodes: list[list[dict]],
-    train_ratio: float = 0.8,
+    train_ratio: float = 0.70,
+    val_ratio: float = 0.15,
     seed: int = 42,
-) -> tuple[list[list[dict]], list[list[dict]]]:
+    stratify_key: str = "scenario_type",
+    min_split_size: int = _MIN_EPISODES_TO_SPLIT,
+) -> tuple[list[list[dict]], list[list[dict]], list[list[dict]]]:
+    """
+    Split episodes into train / val / test at the EPISODE level.
+
+    Stratification guarantees all scenario_type classes appear
+    proportionally in every split.
+    Groups below min_split_size go entirely into train.
+
+    Parameters
+    ----------
+    episodes       : output of load_episodes() — list[list[dict]]
+                     outer list = episodes, inner list = turns
+    train_ratio    : 0.70 → 70 % of episodes to train
+    val_ratio      : 0.15 → 15 % to val  (used by EvaluationCallback
+                     and warm_start validation only — NOT the final report)
+    seed           : random seed
+    stratify_key   : turn-level key propagated from episode metadata.
+                     "scenario_type" has values A-N in this dataset.
+    min_split_size : groups smaller than this go entirely into train.
+                     At 70/15/15 this threshold of 30 ensures every split
+                     cell has at least 4 val and 4 test episodes.
+
+    Returns
+    -------
+    (train_episodes, val_episodes, test_episodes)
+    test_episodes is held out and used ONLY for the final evaluate() call.
+    """
     random.seed(seed)
-    shuffled = episodes.copy()
-    random.shuffle(shuffled)
-    split = max(1, int(len(shuffled) * train_ratio))
-    train, val = shuffled[:split], shuffled[split:]
-    if not val:
-        val = [train[-1]]
-    logger.info("Train episodes: %d | Val episodes: %d", len(train), len(val))
-    return train, val
+
+    # ── Group by stratification key (episode level) ────────────────────────
+    groups: dict[str, list[list[dict]]] = defaultdict(list)
+    for ep in episodes:
+        key_val = ep[0].get(stratify_key, "__unknown__") if ep else "__unknown__"
+        groups[key_val].append(ep)
+
+    train: list[list[dict]] = []
+    val:   list[list[dict]] = []
+    test:  list[list[dict]] = []
+    thin_groups: list[str]  = []
+
+    for group_key in sorted(groups.keys()):   # sorted → reproducible
+        group_eps = groups[group_key]
+        random.shuffle(group_eps)
+        n = len(group_eps)
+
+        if n < min_split_size:
+            # Too few episodes for reliable val/test metrics — train only.
+            train.extend(group_eps)
+            thin_groups.append(group_key)
+            continue
+
+        n_train = int(n * train_ratio)
+        n_val   = int(n * val_ratio)
+        n_test  = n - n_train - n_val          # remainder to test
+
+        if n_train < 1 or n_val < 1 or n_test < 1:
+            logger.warning(
+                "Group '%s' (%d eps) produced an empty split slice — "
+                "placing all in train.", group_key, n,
+            )
+            train.extend(group_eps)
+            thin_groups.append(group_key)
+            continue
+
+        train.extend(group_eps[:n_train])
+        val.extend(group_eps[n_train : n_train + n_val])
+        test.extend(group_eps[n_train + n_val :])
+
+    # Shuffle so episodes from the same group are not contiguous
+    random.shuffle(train)
+    random.shuffle(val)
+    random.shuffle(test)
+
+    if thin_groups:
+        logger.warning(
+            "Thin groups (n < %d) placed entirely in train: %s. "
+            "Exclude from per-scenario val/test breakdown in reports.",
+            min_split_size, sorted(thin_groups),
+        )
+
+    logger.info(
+        "Split (stratified by %s, seed=%d): train=%d  val=%d  test=%d",
+        stratify_key, seed, len(train), len(val), len(test),
+    )
+
+    _print_split_table(train, val, test, stratify_key, thin_groups)
+    return train, val, test
+
+
+def _print_split_table(
+    train: list[list[dict]],
+    val:   list[list[dict]],
+    test:  list[list[dict]],
+    key:   str,
+    thin_groups: list[str],
+) -> None:
+    """Print a verification table so imbalances are visible before training starts."""
+    from collections import Counter
+
+    def dist(split: list[list[dict]]) -> Counter:
+        c: Counter = Counter()
+        for ep in split:
+            v = ep[0].get(key, "?") if ep else "?"
+            c[v] += 1
+        return c
+
+    tr, vl, te = dist(train), dist(val), dist(test)
+    all_keys = sorted(set(tr) | set(vl) | set(te))
+    n_tr, n_vl, n_te = len(train), len(val), len(test)
+    n_total = n_tr + n_vl + n_te
+    avg_turns = 5.74
+
+    W = 72
+    print(f"\n  {'═' * W}")
+    print(f"  Split verification  (stratified by {key})")
+    print(f"  {int(n_tr/n_total*100)}% train / "
+          f"{int(n_vl/n_total*100)}% val / "
+          f"{int(n_te/n_total*100)}% test")
+    print(f"  {'─' * W}")
+    print(f"  {'Scen':<6} {'Total':>7} {'Train':>8} {'Val':>8} {'Test':>8}   Note")
+    print(f"  {'─' * W}")
+    for k in all_keys:
+        total_k = tr[k] + vl[k] + te[k]
+        note = "thin → train only" if k in thin_groups else ""
+        print(f"  {k:<6} {total_k:>7} {tr[k]:>8} {vl[k]:>8} {te[k]:>8}   {note}")
+    print(f"  {'─' * W}")
+    print(f"  {'TOTAL':<6} {n_total:>7,} {n_tr:>8,} {n_vl:>8,} {n_te:>8,}")
+    print(f"  {'TURNS':<6} {int(n_total*avg_turns):>7,} "
+          f"{int(n_tr*avg_turns):>8,} {int(n_vl*avg_turns):>8,} "
+          f"{int(n_te*avg_turns):>8,}   (est. @ {avg_turns} turns/ep)")
+    if thin_groups:
+        print(f"  ⚠  Thin groups (train only): {', '.join(sorted(thin_groups))}")
+    print(f"  {'═' * W}\n")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# RetrievalStatsCallback 
+# RetrievalStatsCallback
 # ──────────────────────────────────────────────────────────────────────────────
 
 class RetrievalStatsCallback(BaseCallback):
@@ -545,7 +681,7 @@ def warm_start_train(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# === STAGE B — PPO FINE-TUNING  (unchanged core, + optional warm-start load)
+# === STAGE B — PPO FINE-TUNING ===
 # ──────────────────────────────────────────────────────────────────────────────
 
 def train(
@@ -670,24 +806,7 @@ def train(
     print(f"\n  Model saved → {final_path}.zip")
     trace_event("TRAINING_END", final_model_path=f"{final_path}.zip")
 
-    # ── Post-training evaluation ───────────────────────────────────────────
-    print("\n" + "═" * 80)
-    print("  POST-TRAINING EVALUATION  –  4 Strategies")
-    print("  Comparing: Policy (RL) vs Always-Retrieve vs Always-Skip vs Heuristic-Router")
-    print("─" * 80)
-    print(f"  Evaluating on {len(val_episodes)} validation episodes...")
-    print(f"  Results will be saved to: {save_path}/final_evaluation/")
-    print("═" * 80 + "\n")
-
-    t_eval_start = time.time()
-    results = evaluate(model, val_episodes, save_path=save_path)
-    t_eval_duration = time.time() - t_eval_start
-
-    print("\n" + "═" * 80)
-    print(f"  POST-TRAINING EVALUATION COMPLETE  ({t_eval_duration:.1f}s)")
-    print("═" * 80 + "\n")
-
-    return model, results
+    return model
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -741,37 +860,28 @@ def parse_args():
         dest="warm_start",
         action="store_false",
         default=True,
-        help=(
-            "Disable Stage A supervised warm start. "
-            "PPO will initialise from random weights. "
-            "Useful for ablation: compare warm-start vs no-warm-start."
-        ),
+        help="Disable Stage A supervised warm start.",
     )
     p.add_argument(
         "--warm-start-epochs",
         type=int,
         default=30,
-        help="Max epochs for supervised warm start (default: 30, early-stopped by val F1)",
     )
     p.add_argument(
         "--warm-start-lr",
         type=float,
         default=1e-3,
-        help="AdamW learning rate for warm start (default: 1e-3)",
     )
     p.add_argument(
         "--warm-start-patience",
         type=int,
         default=5,
-        help="Early-stopping patience on val F1 during warm start (default: 5 epochs)",
     )
     p.add_argument(
         "--warm-start-batch-size",
         type=int,
         default=64,
-        help="Mini-batch size for warm-start gradient steps (default: 64)",
     )
-
     return p.parse_args()
 
 
@@ -783,26 +893,29 @@ if __name__ == "__main__":
     args = parse_args()
 
     all_episodes = load_episodes(args.episodes)
-    train_eps, val_eps = split_episodes(all_episodes)
+
+    # THREE-WAY SPLIT — stratified by scenario_type at episode level.
+    # val_episodes  → used by EvaluationCallback and warm_start validation only.
+    # test_episodes → held out; used only for the final evaluate() call below.
+    train_eps, val_eps, test_eps = split_episodes(all_episodes)
 
     if args.eval_only:
-        # ── Eval-only mode ────────────────────────────────────────────────
         logger.info("Eval-only mode: loading policy from %s", args.policy_path)
         configure_training_trace(args.trace_log)
         model = PPO.load(args.policy_path)
-        evaluate(model, val_eps, save_path=args.save_path)
+        # Evaluate on held-out test set, not val
+        evaluate(model, test_eps, save_path=args.save_path)
 
     else:
         Path(args.save_path).mkdir(parents=True, exist_ok=True)
         configure_training_trace(args.trace_log)
 
-        # ── Stage A: Supervised Warm Start (optional) ─────────────────────
+        # Stage A: Supervised Warm Start (trains on train_eps, validates on val_eps)
         warmstart_weights: str | None = None
-
         if args.warm_start:
             warmstart_weights = warm_start_train(
                 train_episodes   = train_eps,
-                val_episodes     = val_eps,
+                val_episodes     = val_eps,      # val only — test never touched here
                 save_path        = args.save_path,
                 lr               = args.warm_start_lr,
                 max_epochs       = args.warm_start_epochs,
@@ -813,10 +926,10 @@ if __name__ == "__main__":
             print("\n  [--no-warm-start]  Skipping Stage A — PPO starts from random init.\n")
             trace_event("WARMSTART_SKIPPED", reason="--no-warm-start flag set")
 
-        # ── Stage B: PPO Fine-tuning ──────────────────────────────────────
-        model, results = train(
+        # Stage B: PPO (trains on train_eps, checkpoints evaluated on val_eps)
+        model = train(
             train_episodes    = train_eps,
-            val_episodes      = val_eps,
+            val_episodes      = val_eps,         # val only — test never touched here
             total_timesteps   = args.timesteps,
             save_path         = args.save_path,
             tensorboard_log   = args.tb_log,
@@ -824,4 +937,15 @@ if __name__ == "__main__":
             warmstart_weights = warmstart_weights,
         )
 
-    # Full summary table is printed inside evaluate(); nothing more needed here
+        # Final evaluation on the HELD-OUT test set
+        print("\n" + "═" * 80)
+        print("  FINAL EVALUATION  —  held-out test set")
+        print("  Comparing: Policy (RL) vs Always-Retrieve vs Always-Skip vs Heuristic-Router")
+        print("─" * 80)
+        print(f"  Evaluating on {len(test_eps)} test episodes...")
+        print(f"  Results → {args.save_path}/final_evaluation/")
+        print("═" * 80 + "\n")
+
+        t0 = time.time()
+        evaluate(model, test_eps, save_path=args.save_path)   # test, not val
+        print(f"\n  Evaluation complete ({time.time()-t0:.1f}s)")
