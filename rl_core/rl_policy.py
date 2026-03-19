@@ -20,7 +20,7 @@ The transformer is NEVER updated.
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -151,13 +151,13 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         trunk_out = self.mlp_trunk(features)
         logits = self.action_head(trunk_out)
         values = self.value_head(trunk_out).squeeze(-1)
-        distribution = self._get_action_dist_from_latent(logits)
+
+        # FIX: call proba_distribution directly with our action_head logits.
+        distribution = self.action_dist.proba_distribution(action_logits=logits)
+
         actions = distribution.get_actions(deterministic=deterministic)
         log_prob = distribution.log_prob(actions)
         return actions, values, log_prob
-
-    def _get_action_dist_from_latent(self, latent_pi: torch.Tensor):  # type: ignore
-        return self.action_dist.proba_distribution(action_logits=latent_pi)
 
     def evaluate_actions(
         self,
@@ -168,7 +168,10 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         trunk_out = self.mlp_trunk(features)
         logits = self.action_head(trunk_out)
         values = self.value_head(trunk_out).squeeze(-1)
-        distribution = self._get_action_dist_from_latent(logits)
+
+        # FIX: same fix as forward() — bypass SB3's action_net.
+        distribution = self.action_dist.proba_distribution(action_logits=logits)
+
         log_prob = distribution.log_prob(actions)
         entropy = distribution.entropy()
         return values, log_prob, entropy
@@ -178,7 +181,9 @@ class TransformerHeadPolicy(ActorCriticPolicy):
         features = self.extract_features(obs)
         trunk_out = self.mlp_trunk(features)
         logits = self.action_head(trunk_out)
-        return self._get_action_dist_from_latent(logits)
+
+        # FIX: same fix as forward() — bypass SB3's action_net.
+        return self.action_dist.proba_distribution(action_logits=logits)
 
     def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
         """Critic: obs → trunk → value_head → scalar value estimate."""
