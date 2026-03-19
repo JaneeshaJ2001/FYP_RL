@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage
 from core.config import CONFIG
 from core.graph import build_graph
 from core.ingestion import load_or_create_vectorstore
-from core.nodes import DisasterState
+from core.nodes import DisasterState, INITIAL_GROUNDED_SUMMARY
 from core.observability import build_run_config, flush_langfuse
 
 logging.basicConfig(
@@ -26,15 +26,15 @@ logger = logging.getLogger("disaster_chatbot")
 
 _NODE_SEP = "─" * 56
 
-# All 8 fields of DisasterState, in display order
+# All fields of DisasterState, in display order
 _STATE_FIELDS = (
     "messages", "summary", "query", "retrieved_docs",
-    "answer", "action", "mode",
+    "answer", "action", "mode", "turn_number", "prev_action",
 )
 
 
 def _print_node_state(node_name: str, state: dict[str, Any]) -> None:
-    """Pretty-print all 8 DisasterState fields after a graph node completes."""
+    """Pretty-print all DisasterState fields after a graph node completes."""
     from langchain_core.documents import Document
     from langchain_core.messages import BaseMessage
 
@@ -80,7 +80,9 @@ def run_chat_loop(
     print("=" * 60 + "\n")
 
     run_config = build_run_config(thread_id)
-    summary = ""
+    summary = INITIAL_GROUNDED_SUMMARY
+    turn_number: int = 1
+    prev_action: int = -1   # -1 = no previous turn (first-turn sentinel)
 
     try:
         while True:
@@ -98,7 +100,9 @@ def run_chat_loop(
                 "retrieved_docs": [],
                 "answer": "",
                 "action": 1,
-                "mode": mode,          # "baseline" forces retrieve; "policy" uses RL
+                "mode": mode,
+                "turn_number": turn_number,
+                "prev_action": prev_action,
             }
 
             try:
@@ -128,9 +132,14 @@ def run_chat_loop(
                 if final_state:
                     summary = final_state.get("summary", summary)
                     action_taken = final_state.get("action", 1)
+                    turn_number = final_state.get("turn_number", turn_number + 1)
+                    prev_action = action_taken
+
                     retrieval_label = "🔍 retrieved" if action_taken == 1 else "⚡ skipped"
                     print(f"\nAssistant [{retrieval_label}]: {final_state['answer']}\n")
                 else:
+                    # No answer — still advance counters so state stays consistent
+                    turn_number += 1
                     print("\nAssistant: [No answer generated - please try again]\n")
 
             except Exception as exc:
