@@ -69,7 +69,7 @@ def run_chat_loop(
     """
     Simple console chat loop.
 
-    mode="baseline"  → always retrieve (original behaviour, action forced=1)
+    mode="baseline"  → always retrieve (original behaviour)
     mode="policy"    → use the RL-trained policy to decide per turn
     debug=True       → print each node's state updates as the query flows through
     """
@@ -106,39 +106,37 @@ def run_chat_loop(
             }
 
             try:
-                final_state = None
+                final_state: dict = {}
+
                 if debug:
-                    # stream_mode=["updates","values"] yields (tag, data) pairs:
-                    #   "updates" → {node_name: partial}  (tells us which node ran)
-                    #   "values"  → full DisasterState snapshot after that node
+                    # "values" stream mode yields a full state snapshot after
+                    # each node — all fields already present, no merging needed.
                     pending_node: str | None = None
-                    for mode_tag, data in compiled_graph.stream(
+                    for stream_tag, data in compiled_graph.stream(
                         input_state, config=run_config,
                         stream_mode=["updates", "values"],
                     ):
-                        if mode_tag == "updates":
+                        if stream_tag == "updates":
                             for node_name in data:
                                 pending_node = node_name
-                        elif mode_tag == "values" and pending_node is not None:
+                        elif stream_tag == "values" and pending_node is not None:
                             _print_node_state(pending_node, data)
-                            final_state = data   # keep last; all fields present
+                            final_state = data   # full snapshot — no merging needed
                             pending_node = None
                 else:
                     for event in compiled_graph.stream(input_state, config=run_config):
                         for _, partial in event.items():
-                            if "answer" in partial and partial["answer"]:
-                                final_state = partial
+                            final_state.update(partial)  # merge every node's output
 
-                if final_state:
-                    summary = final_state.get("summary", summary)
+                if final_state.get("answer"):
+                    summary      = final_state.get("summary", summary)
                     action_taken = final_state.get("action", 1)
-                    turn_number = final_state.get("turn_number", turn_number + 1)
-                    prev_action = action_taken
+                    turn_number  = final_state.get("turn_number", turn_number + 1)
+                    prev_action  = action_taken
 
                     retrieval_label = "🔍 retrieved" if action_taken == 1 else "⚡ skipped"
                     print(f"\nAssistant [{retrieval_label}]: {final_state['answer']}\n")
                 else:
-                    # No answer — still advance counters so state stays consistent
                     turn_number += 1
                     print("\nAssistant: [No answer generated - please try again]\n")
 
