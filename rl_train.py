@@ -561,10 +561,8 @@ def warm_start_train(
         val_trunk  = policy.mlp_trunk(val_feats)
         val_logits = policy.action_head(val_trunk)
         final_preds = val_logits.argmax(dim=-1).cpu().numpy().tolist()
-
-    final_metrics = _compute_warmstart_metrics(final_preds, y_val.cpu().numpy().tolist())
-
-    # ── Print summary table ────────────────────────────────────────────────
+ 
+    fm = _compute_warmstart_metrics(final_preds, y_val.cpu().numpy().tolist())
     _hr = "─" * 62
     print(f"\n  {_hr}")
     print(f"  Warm-Start Final Metrics  (best epoch={best_epoch})")

@@ -13,7 +13,6 @@ STRICT RULES:
 - Use ONLY the retrieved context below. If information is missing or uncertain, say so \
 clearly and direct the user to call official emergency lines (119 in Sri Lanka, \
 Disaster Management Centre – DMC, or local police).
-- Cite sources briefly where possible, e.g. [UN OCHA], [NDMA guideline].
 - For instructions, use numbered steps.
 - Respond empathetically but concisely.
 
