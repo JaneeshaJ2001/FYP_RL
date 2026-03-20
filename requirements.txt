@@ -38,3 +38,6 @@ langfuse>=3.0.0
 # streamlit>=1.35.0
 
 pytest
+
+matplotlib>=3.8.0
+seaborn>=0.13.0
