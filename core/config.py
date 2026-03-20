@@ -60,7 +60,7 @@ class AppConfig:
     llm_temperature: float = 0.1
 
     # Memory
-    summary_max_tokens: int = 300
+    summary_max_tokens: int = 600
 
     # Observability
     langfuse_enabled: bool = True
@@ -77,6 +77,7 @@ class AppConfig:
     policy_model_path: str = "policy_checkpoints/policy_model_final.zip"
     # Cost per retrieved token (β)
     rl_beta: float = 0.01
+    utility_lambda: float = 0.001
     # Judge LLM temperature (low = deterministic scoring)
     judge_temperature: float = 0.0
 

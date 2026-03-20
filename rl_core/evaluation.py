@@ -17,8 +17,7 @@ from rl_core.training_trace import trace_event
 
 logger = logging.getLogger("rl_train")
 
-# λ for Utility = Q - λC  — reuses the same β from RL reward
-UTILITY_LAMBDA = CONFIG.rl_beta
+UTILITY_LAMBDA = CONFIG.utility_lambda
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -215,7 +214,7 @@ def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
     Utility = Q - λC where:
       Q = avg_judge_score / 10          (normalised quality, range 0-1)
       C = avg_tokens                    (raw token count from approx_token_count)
-      λ = UTILITY_LAMBDA (= CONFIG.rl_beta = 0.01)
+      λ = UTILITY_LAMBDA (= CONFIG.utility_lambda = 0.001)
     """
     n = len(all_turns)
     if n == 0:
