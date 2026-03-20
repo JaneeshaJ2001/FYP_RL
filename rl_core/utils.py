@@ -31,62 +31,52 @@ logger = logging.getLogger("disaster_chatbot")
 # ==============================================================================
 
 _JUDGE_PROMPT_TEMPLATE = """\
-You are a strict, fair judge evaluating a disaster-response assistant.
+You are a strict but fair judge evaluating a disaster-response assistant (floods & landslides ONLY).
 
-BOT SCOPE REMINDER: {scope_reminder}
+BOT SCOPE: This assistant is strictly limited to floods and landslides. It must never hallucinate outside this domain and must refer to official hotlines (119 / DMC) when appropriate.
 
 ===================================================================
-SCORING CRITERIA  (combine into ONE overall integer score 0-10)
+SCORING CRITERIA (combine into ONE overall integer score 0-10)
 ===================================================================
 
 1. RELEVANCE
-   Did the assistant directly address what the user asked in the current query?
-   Deduct points for off-topic, evasive, or misdirected answers.
+   Did the assistant directly address the current user query?
 
 2. CORRECTNESS
-   Is the answer factually accurate given the information the model had access
-   to at this turn — retrieved chunks if action=retrieve, or prior grounded
-   knowledge in the summary if action=skip?
-   Penalise heavily for hallucinations, dangerous advice, or contradictions
-   with available evidence.
+   Is the answer factually accurate based ONLY on the information available at this turn?
 
-3. GROUNDEDNESS  <- READ THIS CAREFULLY
-   action_taken = {action_taken}   ("retrieve" | "skip")
+3. GROUNDEDNESS (most important)
+   action_taken = {action_taken}   ("retrieve" or "skip")
 
-   * If action_taken = "retrieve":
-       The answer MUST be supported by the retrieved chunks provided below.
-       Reward explicit use of chunk content; penalise answers that ignore chunks.
+   Retrieval rule (follow this exactly):
+   - Retrieval is needed ONLY when the conversation summary is INSUFFICIENT to answer the query.
+   - Retrieval is NOT needed when the summary already contains enough grounded knowledge (recap of previously retrieved content).
+   - For OOD, out-of-scope, or truly unanswerable queries, retrieval is also NOT needed — the assistant should politely decline or refer to hotlines.
 
-   * If action_taken = "skip":
-       The assistant had NO new retrieval — it relied on the conversation
-       summary (the grounded knowledge base built from prior turns).
-       PREVIOUSLY DISCOVERED GROUNDED KNOWLEDGE IN THE SUMMARY IS VALID AND
-       SUFFICIENT EVIDENCE.  If the assistant correctly used that prior
-       knowledge, give it FULL CREDIT for groundedness.
-       DO NOT UNFAIRLY PUNISH SKIPS when the summary already contained the
-       needed facts.  Only deduct if the answer introduces new factual claims
-       that are NOT present in the summary AND NOT in any retrieved chunks.
+   • If action_taken = "retrieve":
+     The answer MUST be supported by the retrieved chunks shown below.
+     Reward clear use of chunk content. Penalise answers that ignore or contradict the chunks.
+
+   • If action_taken = "skip":
+     The assistant correctly relied on the conversation summary (grounded knowledge from prior turns).
+     PREVIOUSLY DISCOVERED GROUNDED KNOWLEDGE IN THE SUMMARY IS VALID AND SUFFICIENT EVIDENCE.
+     If the assistant used that prior knowledge correctly, give FULL CREDIT for groundedness.
+     DO NOT penalise a skip when the summary was already sufficient. Only deduct if the answer introduces new factual claims that are NOT in the summary.
 
 4. COMPLETENESS
-   Did the answer provide enough useful, actionable information?
-   Deduct for vague, overly short, or critically incomplete answers (e.g.
-   missing evacuation steps, no emergency contact when clearly relevant).
+   Did the answer provide enough useful, actionable information (not vague or partial)?
 
 5. SCOPE HANDLING
-   The bot is strictly limited to floods and landslides only.
-   * If the query is outside scope OR truly unanswerable with current knowledge:
-       the assistant MUST politely decline and/or refer to official hotlines
-       (e.g. 119 in Sri Lanka / DMC) rather than hallucinating.
-   * Reward correct scope refusals; penalise hallucinations outside domain.
+   If the query is outside scope or truly unanswerable with current knowledge, the assistant must politely decline or refer to hotlines instead of hallucinating.
 
 ===================================================================
-SCORE BANDS
+SCORE BANDS (overall quality)
 ===================================================================
-  0-2  = wrong / unsafe / hallucinated
-  3-4  = poor  (major omissions or domain errors)
-  5-6  = acceptable (correct but shallow or partially grounded)
-  7-8  = good  (solid, well-grounded, actionable)
-  9-10 = excellent (complete, precise, perfectly grounded)
+0-2  = wrong / unsafe / hallucinated
+3-4  = poor (major gaps or errors)
+5-6  = acceptable (correct but shallow)
+7-8  = good (solid, grounded, actionable)
+9-10 = excellent (complete, precise, perfectly grounded)
 
 ===================================================================
 INPUTS FOR THIS TURN
@@ -95,31 +85,25 @@ INPUTS FOR THIS TURN
 Current user query:
 {query}
 
-Conversation summary  (grounded knowledge base — facts from prior retrieved turns):
+Conversation summary (grounded knowledge from prior turns):
 {conversation_summary}
 
-Retrieved chunks  (populated only when action_taken = "retrieve"):
+Action taken this turn: {action_taken} ("retrieve" or "skip")
+
+Retrieved chunks (only present if action="retrieve"; otherwise "No retrieval performed"):
 {retrieved_chunks}
 
 Assistant's answer:
 {response}
 
 ===================================================================
-OUTPUT
+OUTPUT (exactly one line)
 ===================================================================
-Output ONLY valid JSON on a single line — no markdown, no preamble, no trailing text:
-{{"score": <integer 0-10>, "reason": "<brief <=50-word explanation referencing the 5 criteria>"}}
+Output ONLY valid JSON — nothing else:
+{{"score": <integer 0-10>, "reason": "<brief explanation (≤50 words) referencing the 5 criteria>"}}
 """
 
 JUDGE_PROMPT = ChatPromptTemplate.from_template(_JUDGE_PROMPT_TEMPLATE)
-
-# Static scope reminder injected into every judge call — callers must never override this.
-_SCOPE_REMINDER = (
-    "This assistant ONLY supports floods and landslides. "
-    "It must NEVER hallucinate or answer questions outside this domain. "
-    "Out-of-scope queries must be politely declined with a referral to official "
-    "hotlines (e.g. 119 / Disaster Management Centre)."
-)
 
 
 def build_judge_llm():
@@ -162,9 +146,6 @@ class JudgeChain:
                                      turns; pass "" or omit entirely for skip turns
         response            : str  — assistant answer this turn
 
-    Auto-injected (never settable by callers):
-        scope_reminder      : str  — always _SCOPE_REMINDER
-
     Returns: {"score": int (0-10), "reason": str}
     """
 
@@ -176,9 +157,6 @@ class JudgeChain:
         """Return parsed JSON dict with 'score' (int 0-10) and 'reason' (str).
         """
         full_inputs = dict(inputs)  # shallow copy — don't mutate caller's dict
-
-        # Force-set AFTER copying so this key always wins over any caller value.
-        full_inputs["scope_reminder"] = _SCOPE_REMINDER
 
         # Ensure retrieved_chunks has a safe default for skip turns.
         if not full_inputs.get("retrieved_chunks"):
