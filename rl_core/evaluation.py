@@ -22,7 +22,7 @@ UTILITY_LAMBDA = CONFIG.rl_beta
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Routing metrics helper: confusion matrix + TP/FP/FN/TN rates
+# Routing metrics helper
 # ──────────────────────────────────────────────────────────────────────────────
 
 def compute_routing_metrics(
@@ -87,7 +87,7 @@ def heuristic_action(turn: dict, turn_idx: int) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Single-episode runner  (shared by EvaluationCallback and evaluate())
+# Single-episode runner
 # ──────────────────────────────────────────────────────────────────────────────
 
 def run_episode(
@@ -108,18 +108,16 @@ def run_episode(
     latency, response (if collect_samples=True), and all scenario metadata.
     """
     from langchain_core.messages import HumanMessage
-
-    from core.nodes import _format_docs as _fmt
     from core.observability import build_run_config
     from rl_core.state_encoder import encode_state
-    from rl_core.utils import approx_token_count
+    from rl_core.utils import approx_token_count, format_chunks_for_judge
 
     summary = ""
     thread_id = f"eval-{random.randint(0, 10_000_000)}"
     run_config = build_run_config(thread_id)
     turn_records: list[dict] = []
     turn_number: int = 1
-    prev_action: int = -1   # -1 = no previous turn (first-turn sentinel)
+    prev_action: int = -1
 
     for t_idx, turn in enumerate(episode):
         query = turn["query"]
@@ -127,12 +125,7 @@ def run_episode(
 
         # ── Choose action ──────────────────────────────────────────────────
         if use_policy and model is not None:
-            obs = encode_state(
-                summary,
-                query,
-                turn_number=turn_number,
-                prev_action=prev_action,
-            )
+            obs = encode_state(summary, query, turn_number=turn_number, prev_action=prev_action)
             action_arr, _ = model.predict(obs, deterministic=True)
             action = int(action_arr)
         elif use_heuristic:
@@ -165,19 +158,27 @@ def run_episode(
         latency = time.time() - t_start
 
         response = final_state.get("answer", "")
-        docs = final_state.get("retrieved_docs", [])
+
+        # FIX: Guard against stale retrieved_docs on skip turns.
+        # decide_retrieve now resets retrieved_docs=[] in the graph for action=0,
+        # but we double-check here so token costs and judge inputs are always correct.
+        docs = final_state.get("retrieved_docs", []) if action == 1 else []
+
         summary = final_state.get("summary", summary)
         tokens = approx_token_count(docs)
         turn_number = final_state.get("turn_number", turn_number + 1)
-        prev_action = action   # the action just taken becomes prev for next turn
+        prev_action = action
 
-        # ── Judge scoring ──────────────────────────────────────────────────
-        docs_text = _fmt(docs) if docs else ""
+        # FIX: Use "retrieved_chunks" key (not "retrieved_docs") and use
+        # format_chunks_for_judge() so the judge receives the truncated chunk
+        # text it expects.  The old code passed "retrieved_docs" which JudgeChain
+        # ignores (wrong key), causing groundedness scoring to always fall back to
+        # "No retrieval performed" even on retrieve turns.
         result = judge.invoke({
             "query": query,
             "conversation_summary": summary,
             "action_taken": "retrieve" if action == 1 else "skip",
-            "retrieved_docs": docs_text,
+            "retrieved_chunks": format_chunks_for_judge(docs),
             "response": response,
         })
         score = float(result.get("score", 5))
@@ -189,10 +190,8 @@ def run_episode(
             "score": score,
             "tokens": tokens,
             "latency": latency,
-            # Only store text when building sample predictions (saves memory)
             "response": response if collect_samples else "",
             "judge_reason": result.get("reason", "") if collect_samples else "",
-            # Scenario metadata — needed for per-scenario breakdown
             "scenario_type": turn.get("scenario_type", "unknown"),
             "scenario_name": turn.get("scenario_name", ""),
             "query_type": turn.get("query_type", "unknown"),
@@ -206,7 +205,7 @@ def run_episode(
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Metrics aggregation helpers
+# Metrics aggregation
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
@@ -230,7 +229,6 @@ def _aggregate_turns(all_turns: list[dict]) -> dict[str, Any]:
 
     # Reward mirrors rl_env formula: score - β * tokens
     rewards = [s - UTILITY_LAMBDA * tk for s, tk in zip(scores, tokens)]
-
     routing = compute_routing_metrics(actions, req)
 
     avg_score = float(np.mean(scores))
@@ -332,12 +330,13 @@ class EvaluationCallback(BaseCallback):
         self._ppo_updates = 0
         self._judge = None
         self._app = None
+        # Accumulate per-checkpoint metrics for post-training plotting
+        self._checkpoint_metrics: list[dict] = []
 
     def _lazy_init(self):
         if self._judge is None:
             from core.graph import build_graph
             from rl_core.utils import JudgeChain
-
             self._judge = JudgeChain()
             self._app = build_graph()
 
@@ -379,27 +378,21 @@ class EvaluationCallback(BaseCallback):
             self.logger.record(f"{pfx}/retrieval_rate", sm.get("retrieval_rate", 0))
             self.logger.record(f"{pfx}/unsafe_skip_rate", sm.get("unsafe_skip_rate", 0))
 
-        # ── Clean terminal checkpoint summary ──────────────────────────────
+        # Store for post-training plotting
+        self._checkpoint_metrics.append({
+            "ppo_update": self._ppo_updates,
+            "env_steps": self.num_timesteps,
+            **metrics,
+        })
+
         _hr = "─" * 62
         _ts = time.strftime("%H:%M:%S")
         print(f"\n{_hr}")
-        print(
-            f"  Validation Checkpoint  │  "
-            f"update={self._ppo_updates}  step={self.num_timesteps}  ({_ts})"
-        )
+        print(f"  Validation Checkpoint  │  update={self._ppo_updates}  step={self.num_timesteps}  ({_ts})")
         print(_hr)
-        print(
-            f"  Judge Score    {metrics['avg_judge_score']:5.2f}/10"
-            f"     Retrieval Rate    {metrics['retrieval_rate'] * 100:5.1f}%"
-        )
-        print(
-            f"  Unsafe Skip    {metrics['unsafe_skip_rate']:8.3f}"
-            f"   Wasteful Retr     {metrics['wasteful_retrieve_rate']:8.3f}"
-        )
-        print(
-            f"  Utility        {metrics['utility']:8.4f}"
-            f"   F1               {metrics['f1']:8.3f}"
-        )
+        print(f"  Judge Score    {metrics['avg_judge_score']:5.2f}/10     Retrieval Rate    {metrics['retrieval_rate'] * 100:5.1f}%")
+        print(f"  Unsafe Skip    {metrics['unsafe_skip_rate']:8.3f}   Wasteful Retr     {metrics['wasteful_retrieve_rate']:8.3f}")
+        print(f"  Utility        {metrics['utility']:8.4f}   F1               {metrics['f1']:8.3f}")
         print(_hr + "\n")
 
         # ── trace_event ─────────────────────
@@ -634,10 +627,7 @@ def _print_summary_table(all_results: dict):
     if scenario_table:
         print("\n  PER-SCENARIO BREAKDOWN  (Policy) ")
         print("─" * 82)
-        print(
-            f"{'Scenario':<22}{'n':>6}{'judge':>9}{'ret%':>9}"
-            f"{'unsafe_skip':>13}{'wasteful':>11}{'utility':>11}"
-        )
+        print(f"{'Scenario':<22}{'n':>6}{'judge':>9}{'ret%':>9}{'unsafe_skip':>13}{'wasteful':>11}{'utility':>11}")
         print("─" * 82)
         for scenario, by_strat in sorted(scenario_table.items()):
             if "Policy" not in by_strat:
