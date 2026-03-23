@@ -609,13 +609,13 @@ def train(
     warmstart_weights: str | None = None,
     generate_plots:    bool = True,
     plots_dir:         str  = "plots",
-    eval_episodes:     int  = 50,
+    eval_episodes:     int  = 25,
 ):
     """
     Stage B — PPO Fine-tuning.
 
     eval_episodes : number of val episodes to use for EvaluationCallback and
-                    post-training evaluate(). Default 50 keeps each pass ~20-30 min.
+                    post-training evaluate(). Default 25 keeps each pass ~20-30 min.
                     Set to 0 or None to use all val episodes (very slow).
     """
     trace_log_path = configure_training_trace(trace_log)
@@ -657,14 +657,14 @@ def train(
     model = PPO(
         policy=TransformerHeadPolicy,
         env=train_env,
-        learning_rate=1e-3,
-        n_steps=256,
+        learning_rate=3e-4,
+        n_steps=512,
         batch_size=64,
         n_epochs=10,
         gamma=0.95,
         gae_lambda=0.95,
         clip_range=0.2,
-        ent_coef=0.02,
+        ent_coef=0.04,
         vf_coef=0.5,
         max_grad_norm=0.5,
         tensorboard_log=tensorboard_log,
@@ -689,11 +689,9 @@ def train(
     trainable = sum(p.numel() for p in model.policy.parameters() if p.requires_grad)
 
     # Eval every ~10% of training, minimum every 1 update
-    updates_per_eval = max(1, total_timesteps // (256 * 10))
+    updates_per_eval = max(3, total_timesteps // (512 * 5))
 
     print(f"  PPO model ready  |  trainable params: {trainable:,}")
-    print(f"  Eval every {updates_per_eval} update(s)  "
-          f"(~{max(1, total_timesteps // (updates_per_eval * 256))} checkpoints)\n")
 
     eval_callback  = EvaluationCallback(
         val_episodes=eval_val,
@@ -775,9 +773,9 @@ def parse_args():
         help="Mini-batch size for warm-start (default: 256 — good for 16k+ turns)")
 
     # Scale controls
-    p.add_argument("--eval-episodes", type=int, default=50,
+    p.add_argument("--eval-episodes", type=int, default=25,
         help="Number of val episodes for each eval pass. "
-             "50 ≈ 20-30min. 0 = use all (very slow). (default: 50)")
+             "25 ≈ 20-30min. 0 = use all (very slow). (default: 25)")
     p.add_argument("--no-cache", dest="use_cache",
         action="store_false", default=True,
         help="Disable warm-start embedding cache (always re-encode)")
